@@ -41,23 +41,23 @@ std_inv = 1./noise_std;
 
 M = length(u_idx);
 
-y_fft = mk_fftmat(u_idx,v_idx,(y_r./noise_std),(y_i./noise_std),Nx,Ny);
+y_fft = mk_fftmat(u_idx,v_idx,(y_r./noise_std),(y_i./noise_std),Nx,Ny)*sqNN;
 mask  = mk_fftmat(u_idx,v_idx,std_inv,zeros(1,M),Nx,Ny);
 
 tmpc = lambda*sum(x)+...
-    costF_fft_sqTV((y_fft-(mask.*fft2(reshape(x,Nx,Ny),Nx,Ny))/sqNN),x,Nx,Ny,lambda2);
+    costF_fft_sqTV((y_fft-(mask.*fft2(reshape(x,Nx,Ny),Nx,Ny))),x,Nx,Ny,lambda2);
 
 for t = 1:MAXITER
 
     tmpcost(t) = tmpc; 
     
-    yAz = y_fft-(mask.*fft2(reshape(z,Nx,Ny),Nx,Ny))/sqNN;
+    yAz = y_fft-(mask.*fft2(reshape(z,Nx,Ny),Nx,Ny));
     
     if mod(t,100) == 1
         fprintf('%d cost = %f\n',t,tmpcost(t));
     end
     
-    AyAz = sqNN * reshape(real(ifft2((mask.*reshape(yAz,Nx,Ny)),Nx,Ny)),Nx*Ny,1)/2;
+    AyAz = reshape(real(ifft2((mask.*reshape(yAz,Nx,Ny)),Nx,Ny)),Nx*Ny,1)/2;
     
     dvec = d_sqTV(z,Nx,Ny);
     
@@ -68,7 +68,7 @@ for t = 1:MAXITER
     for i = 1:MAXITER     
         xtmp = softth_nonneg((AyAz_dvec)/c+z,lambda/c).*c_box;
 
-        yax  = y_fft-(mask.*fft2(reshape(xtmp,Nx,Ny),Nx,Ny))/sqNN;
+        yax  = y_fft-(mask.*fft2(reshape(xtmp,Nx,Ny),Nx,Ny));
         
         tmpF = costF_fft_sqTV(yax,xtmp,Nx,Ny,lambda2);
         tmpQ = Qcore-(xtmp-z)'*AyAz_dvec+(xtmp-z)'*(xtmp-z)*c/2;
