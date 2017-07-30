@@ -6,9 +6,10 @@ BINDIR=../../bin
 
 CC=gcc
 CFLAGS=-O2
-CLIBS= -llapack -lopenblas -lm
+CLIBS= -llapack -lopenblas -lm -lpthread
+CLIBS_FFTW = -lfftw3
 
-targets = mfista_L1 mfista_L1_TV mfista_L1_sqTV
+targets = mfista_L1 mfista_L1_TV mfista_L1_sqTV fftwtest
 object_tools = mfista_tools.o
 object_l1 = mfista_lib.o
 object_tv = mfista_TV_lib.o
@@ -24,6 +25,9 @@ mfista_L1_TV: mfista_L1_TV.o $(object_tv) $(object_tools)
 
 mfista_L1_sqTV: mfista_L1_sqTV.o $(object_sqtv) $(object_tools)
 	$(CC) $(CFLAGS) $(object_sqtv) $(object_tools) $@.o $(CLIBS) -o $@
+
+fftwtest: fftwtest.o $(object_tools)
+	$(CC) $(CFLAGS) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW) -o $@
 
 .c.o:
 	$(CC) -c -O2 -Wall $(CFLAGS) -o $@ $<
