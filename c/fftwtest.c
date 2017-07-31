@@ -38,6 +38,19 @@ void fftw_half2full(int N1, int N2, fftw_complex *FT_h, fftw_complex *FT)
   }
 }
 
+void fftw_full2half(int N1, int N2, fftw_complex *FT, fftw_complex *FT_h)
+{
+  int i, j, N2_h;
+
+  N2_h = floor(N2/2)+1;
+
+  for(i=0;i<N1;++i)
+    for(j=0;j<N2_h;++j)
+      FT_h[N2_h*i+j] = FT[N2*i+j];
+
+}
+
+
 int read_int_vector(char *fname, int length, int *vector)
 {
   FILE *fp;
@@ -50,6 +63,208 @@ int read_int_vector(char *fname, int length, int *vector)
   return(n);
 }
 
+/*
+double calc_F_sqTV_part_fft(int *N, int NX, int NY,
+			    fftw_complex *yvec,
+			    double *xvec, double lambda_sqtv,
+			    int *inc, double *buffvec)
+{
+  double term1, term2, alpha = -1, beta = 1;
+
+  dcopy_(M, yvec, inc, buffvec, inc);
+
+  dgemv_("N", M, N, &alpha, Amatrix, M, 
+	 xvec, inc, &beta, buffvec, inc);
+
+  term1 = ddot_(M, buffvec, inc, buffvec, inc);
+  term2 = sqTV(NX, NY, xvec);
+
+  return(term1/2+lambda_sqtv*term2);
+}
+
+void dF_dx_fft(int *N, int NX, int NY,
+	       fftw_complex *yvec, 
+	       double *xvec, double lambda_sqtv,
+	       int *inc, double *buffyvec1, double *dFdx)
+{
+  double alpha = 1, beta;
+
+  calc_yAz(M, N,  yvec, Amatrix, xvec, inc, buffyvec1);
+
+  d_sqTV(NX, NY, xvec, dFdx);
+
+  beta = -lambda_sqtv;
+
+  dgemv_("T", M, N, &alpha, Amatrix, M, buffyvec1, inc, &beta, dFdx, inc);
+
+}
+*/
+/*
+void mfista_L1_TSV_core_fft(fftw_complex *yvec, 
+			    int *N, int NX, int NY,
+			    double lambda_l1, double lambda_sqtv, double cinit,
+			    double *xvec, int nonneg_flag, int looe_flag,
+			    struct RESULT *mfista_result)
+{
+  void (*soft_th)(double *vector, int length, double eta, double *newvec);
+  int i, iter, inc = 1;
+  double *xtmp, *xnew, *ytmp, *zvec, *dfdx, *yAx,
+    Qcore, Fval, Qval, c, cinv, tmpa, l1cost, costtmp, *cost,
+    mu=1, munew, alpha = 1;
+
+  printf("computing image with MFISTA.\n");
+
+  cost  = alloc_vector(MAXITER);
+  dfdx  = alloc_vector(*N);
+  xnew  = alloc_vector(*N);
+  xtmp  = alloc_vector(*N);
+  ytmp  = alloc_vector(*M);
+  zvec  = alloc_vector(*N);
+
+  if(nonneg_flag == 0)
+    soft_th=soft_threshold;
+  else if(nonneg_flag == 1)
+    soft_th=soft_threshold_nonneg;
+  else {
+    printf("nonneg_flag must be chosen properly.\n");
+    return;
+  }
+
+  dcopy_(N, xvec, &inc, zvec, &inc);
+
+  c = cinit;
+
+  costtmp = calc_F_sqTV_part(M, N, NX, NY,
+			     yvec, Amat, zvec, lambda_sqtv, &inc, ytmp);
+  l1cost = dasum_(N, zvec, &inc);
+  costtmp += lambda_l1*l1cost;
+
+  for(iter = 0; iter < MAXITER; iter++){
+
+    cost[iter] = costtmp;
+
+    if((iter % 100) == 0)
+      printf("%d cost = %f \n",(iter+1), cost[iter]);
+
+    dF_dx(M, N, NX, NY, yvec, Amat, zvec, lambda_sqtv, &inc, ytmp, dfdx);
+
+    Qcore = calc_F_sqTV_part(M, N, NX, NY,
+			     yvec, Amat, zvec, lambda_sqtv, &inc, ytmp);
+
+    for( i = 0; i < MAXITER; i++){
+      dcopy_(N, dfdx, &inc, xtmp, &inc);
+      cinv = 1/c;
+      dscal_(N, &cinv, xtmp, &inc);
+      daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
+      soft_th(xtmp, *N, lambda_l1/c, xnew);
+      Fval = calc_F_sqTV_part(M, N, NX, NY,
+			      yvec, Amat, xnew, lambda_sqtv, &inc, ytmp);
+      Qval = calc_Q_part(N, xnew, zvec, c, &inc, dfdx, xtmp);
+      Qval += Qcore;
+
+      if(Fval<=Qval) break;
+
+      c *= ETA;
+    }
+
+    c /= ETA;
+
+    munew = (1+sqrt(1+4*mu*mu))/2;
+
+    l1cost = dasum_(N, xnew, &inc);
+
+    Fval += lambda_l1*l1cost;
+
+    if(Fval < cost[iter]){
+
+      costtmp = Fval;
+      dcopy_(N, xvec, &inc, zvec, &inc);
+
+      tmpa = (1-mu)/munew;
+      dscal_(N, &tmpa, zvec, &inc);
+
+      tmpa = 1+((mu-1)/munew);
+      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
+	
+      dcopy_(N, xnew, &inc, xvec, &inc);
+	    
+    }	
+    else{
+      dcopy_(N, xvec, &inc, zvec, &inc);
+
+      tmpa = 1-(mu/munew);
+      dscal_(N, &tmpa, zvec, &inc);
+      
+      tmpa = mu/munew;
+      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
+
+      if((iter>1) && (dasum_(N, xvec, &inc) == 0)) break;
+    }
+
+    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])<EPS)) break;
+
+    mu = munew;
+  }
+  if(iter == MAXITER){
+    printf("%d cost = %f \n",(iter), cost[iter-1]);
+    iter = iter -1;
+  }
+  else
+    printf("%d cost = %f \n",(iter+1), cost[iter]);
+
+  printf("\n");
+
+  mfista_result->M = (*M);
+  mfista_result->N = (*N);
+  mfista_result->NX = NX;
+  mfista_result->NY = NY;
+  mfista_result->ITER = iter+1;
+  mfista_result->maxiter = MAXITER;
+	    
+  mfista_result->lambda_l1 = lambda_l1;
+  mfista_result->lambda_sqtv = lambda_sqtv;
+  mfista_result->lambda_tv = 0;
+
+  yAx  = alloc_vector(*M);
+
+  calc_yAz(M, N, yvec, Amat, xvec, &inc, yAx);
+
+  mfista_result->sq_error = 0;
+
+  for(i = 0;i< (*M);i++){
+    mfista_result->sq_error += yAx[i]*yAx[i];
+  }
+
+  mfista_result->mean_sq_error = mfista_result->sq_error/((double)(*M));
+
+  mfista_result->l1cost   = 0;
+  mfista_result->N_active = 0;
+
+  for(i = 0;i < (*N);i++){
+    tmpa = fabs(xvec[i]);
+    if(tmpa > 0){
+      mfista_result->l1cost += tmpa;
+      ++ mfista_result->N_active;
+    }
+  }
+
+  mfista_result->sqtvcost = sqTV(NX, NY, xvec);
+  mfista_result->tvcost = 0;
+  mfista_result->finalcost = (mfista_result->sq_error)/2
+    + lambda_l1*(mfista_result->l1cost)
+    + lambda_sqtv*(mfista_result->sqtvcost);
+
+  free(yAx);
+
+  free(cost);
+  free(dfdx);
+  free(xnew);
+  free(xtmp);
+  free(ytmp);
+  free(zvec);
+}
+*/
+
 int main( void ){
  
   int M = 6590, N = 16384, N1 = 128, N2 = 128, N2_h, NN = 4, dnum, i, j,
@@ -59,7 +274,7 @@ int main( void ){
   char *u_fname = "data/u_idx.bin", *v_fname = "data/v_idx.bin",
     *noise_fname = "data/noise_std_fft.bin",
     *y_r_fname = "data/vis_r.bin", *y_i_fname = "data/vis_i.bin";
-  double *y_r, *y_i, *noise_stdev, *x, *y_r2, *y_i2, *y_r3, *y_i3;
+  double *y_r, *y_i, *noise_stdev, *x, *y_r2, *y_i2, *y_r3, *y_i3, *mask_h, *mask;
   
   fftw_complex *a, *b, *y_fft, *y_fft2, *y_fft3, *x_c;
   fftw_plan fftwplan;
@@ -79,12 +294,14 @@ int main( void ){
 
   N2_h = floor(N2/2)+1;
 
-  y_r = alloc_vector(M);
-  y_i = alloc_vector(M);
-  y_r2 = alloc_vector(N1*N2_h);
-  y_i2 = alloc_vector(N1*N2_h);
-  y_r3 = alloc_vector(N1*N2);
-  y_i3 = alloc_vector(N1*N2);
+  y_r    = alloc_vector(M);
+  y_i    = alloc_vector(M);
+  y_r2   = alloc_vector(N1*N2_h);
+  y_i2   = alloc_vector(N1*N2_h);
+  y_r3   = alloc_vector(N1*N2);
+  y_i3   = alloc_vector(N1*N2);
+  mask_h = alloc_vector(N1*N2_h);
+  mask   = alloc_vector(N1*N2);
   noise_stdev = alloc_vector(M);
 
   x = alloc_vector(N1*N2);
@@ -125,12 +342,12 @@ int main( void ){
   for(i=0;i<N1;++i) for(j=0;j<N2;++j) y_fft[N2*i+j] = 0;
 
   for(i=0;i<M;++i){
-    y_fft[N2*(u_idx[i]-1) + (v_idx[i]-1)] = y_r[i] + y_i[i]*I;
+    y_fft[N2*(u_idx[i]-1) + (v_idx[i]-1)] = y_r[i]/noise_stdev[i] + y_i[i]*I/noise_stdev[i];
+    mask[N2*(u_idx[i]-1) + (v_idx[i]-1)]  = 1/noise_stdev[i];
   }
 
-  for(i=0;i<N1;++i)
-    for(j=0;j<N2_h;++j)
-      y_fft2[N2_h*i+j] = y_fft[N2*i+j];
+  fftw_full2half(N1, N2, y_fft, y_fft2);
+  for(i=0;i<N1;++i) for(j=0;j<N2_h;++j) mask_h[N2_h*i+j] = mask[N2*i+j];
 
   for(i = 0;i<10;++i)
     printf("y_fft2[%d] = %+f %+f*i\n",
