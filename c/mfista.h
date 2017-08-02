@@ -31,6 +31,8 @@
 #include <limits.h>
 #include "blas.h"
 #include "lapack.h"
+#include <complex.h> 
+#include <fftw3.h>
 
 #define CINIT     10000 
 #define MAXITER   50000
@@ -52,16 +54,17 @@ struct RESULT{
   int ITER;
   int nonneg;
   double lambda_l1;
-  double lambda_sqtv;
+  double lambda_tsv;
   double lambda_tv;
   double sq_error;
   double mean_sq_error;
   double l1cost;
-  double sqtvcost;
+  double tsvcost;
   double tvcost;
   double looe;
   double Hessian_positive;
   double finalcost;
+  double comp_time;
   char *v_fname;
   char *A_fname;
   char *out_fname;
@@ -70,6 +73,7 @@ struct RESULT{
 
 /* memory allocation of matrix and vectors */
 
+extern int *alloc_int_vector(int length);
 extern double *alloc_vector(int length);
 extern double *alloc_matrix(int height, int width);
 extern void    clear_matrix(double *matrix, int height, int width);
@@ -78,6 +82,7 @@ extern void    clear_matrix(double *matrix, int height, int width);
 
 extern FILE* fopenr(char* fn);
 extern FILE* fopenw(char* fn);
+extern int read_int_vector(char *fname, int length, int *vector);
 extern int read_V_vector(char *fname, int length, double *vector);
 extern unsigned long read_A_matrix(char *fname, int height, int width, double *matrix);
 extern int write_X_vector(char *fname, int length, double *vector);
@@ -87,17 +92,14 @@ extern int write_X_vector(char *fname, int length, double *vector);
 extern void transpose_matrix(double *matrix, int origheight, int origwidth);
 
 extern void calc_yAz(int *M, int *N,
-                     double *yvec, double *Amat, double *zvec,
-                     int *inc, double *yAz);
+                     double *yvec, double *Amat, double *zvec, double *yAz);
 
 extern double calc_F_part(int *M, int *N,
 			  double *yvec, double *Amatrix,
-			  double *xvec, int *inc, double *buffvec);
+			  double *xvec, double *buffvec);
 
-extern double calc_Q_part(int *N, 
-			  double *xvec1, double *xvec2,
-			  double c, int *inc,
-			  double *AyAz, double *buffxvec1);
+extern double calc_Q_part(int *N, double *xvec1, double *xvec2,
+			  double c, double *AyAz, double *buffxvec1);
 /* thresholding */
 
 extern void soft_threshold(double *vector, int length, double eta, 
@@ -115,6 +117,12 @@ extern int i2r(int i, int NX);
 extern int i2c(int i, int NX);
 
 extern int rc2i(int r, int c, int NX);
+
+/* Some routines for TSV */
+
+extern double TSV(int NX, int NY, double *xvec);
+
+extern void d_TSV(int NX, int NY, double *xvec, double *dvec);
 
 /* Some routines for computing LOOE */
 
@@ -150,14 +158,21 @@ extern void mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
 				     double *xvec,
 				     struct RESULT *mfista_result);
 
-/* subroutines for mfista_L1_sqTV_nonneg */
+/* subroutines for mfista_L1_TSV_nonneg */
 
-extern void mfista_L1_sqTV_core(double *yvec, double *Amat, 
-				int *M, int *N, int NX, int NY,
-				double lambda, double lambda_tv, double cinit,
-				double *xvec, int nonneg_flag, int looe_flag,
-				struct RESULT *mfista_result);
+extern void mfista_L1_TSV_core(double *yvec, double *Amat, 
+			       int *M, int *N, int NX, int NY,
+			       double lambda, double lambda_tv, double cinit,
+			       double *xvec, int nonneg_flag, int looe_flag,
+			       struct RESULT *mfista_result);
 
+/* subroutines for mfista_L1_TSV_fftw */
+
+extern void mfista_L1_TSV_core_fftw(doublecomplex *yf, double *mask_h,
+				    int M, int *N, int NX, int NY,
+				    double lambda_l1, double lambda_tsv, double cinit,
+				    double *xvec, int nonneg_flag, 
+				    struct RESULT *mfista_result);
 
 /* output */
 

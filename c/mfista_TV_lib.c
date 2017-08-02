@@ -436,7 +436,7 @@ void mfista_TV_core(double *yvec, double *Amat,
 
   tvcost = TV(NX,NY,xvec);
 
-  costtmp = calc_F_part(M, N, yvec, Amat, xvec, &inc, ytmp);
+  costtmp = calc_F_part(M, N, yvec, Amat, xvec, ytmp);
   costtmp += lambda_tv*tvcost;
 
   for(iter = 0; iter < MAXITER; iter++){
@@ -446,10 +446,10 @@ void mfista_TV_core(double *yvec, double *Amat,
     if((iter % 100) == 0)
       printf("%d cost = %f \n",(iter+1), cost[iter]);
 
-    calc_yAz(M, N,  yvec, Amat, zvec, &inc, yAz);
+    calc_yAz(M, N,  yvec, Amat, zvec, yAz);
     dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, AyAz, &inc);
 
-    Qcore = calc_F_part(M, N, yvec, Amat, zvec, &inc, ytmp);
+    Qcore = calc_F_part(M, N, yvec, Amat, zvec, ytmp);
     
     for( i = 0; i < MAXITER; i++){
 
@@ -461,8 +461,8 @@ void mfista_TV_core(double *yvec, double *Amat,
       FGP(N, NX, NY, xtmp, lambda_tv/c, FGPITER,
 	  &inc, pmat, qmat, rmat, smat, npmat, nqmat, xnew);
 
-      Fval = calc_F_part(M, N, yvec, Amat, xnew, &inc, ytmp);
-      Qval = calc_Q_part(N, xnew, zvec, c, &inc, AyAz, xtmp);
+      Fval = calc_F_part(M, N, yvec, Amat, xnew, ytmp);
+      Qval = calc_Q_part(N, xnew, zvec, c, AyAz, xtmp);
       Qval += Qcore;
 
       if(Fval<=Qval) break;
@@ -534,11 +534,11 @@ void mfista_TV_core(double *yvec, double *Amat,
   mfista_result->maxiter = MAXITER;
 	    
   mfista_result->lambda_l1 = 0;
-  mfista_result->lambda_sqtv = 0;
+  mfista_result->lambda_tsv = 0;
   mfista_result->lambda_tv = lambda_tv;
 
   yAx  = alloc_vector(*M);
-  calc_yAz(M, N, yvec, Amat, xvec, &inc, yAx);
+  calc_yAz(M, N, yvec, Amat, xvec, yAx);
 
   /* mean square error */
   mfista_result->sq_error = 0;
@@ -558,7 +558,7 @@ void mfista_TV_core(double *yvec, double *Amat,
     if(fabs(xnew[i]) > 0)
       ++ mfista_result->N_active;
 
-  mfista_result->sqtvcost = 0;
+  mfista_result->tsvcost = 0;
   mfista_result->tvcost = TV(NX, NY, xvec);
   mfista_result->finalcost = (mfista_result->sq_error)/2
     + lambda_tv*(mfista_result->tvcost);
@@ -641,11 +641,11 @@ void mfista_L1_TV_core(double *yvec, double *Amat,
     if((iter % 100) == 0)
       printf("%d cost = %f \n",(iter+1), cost[iter]);
 
-    calc_yAz(M, N,  yvec, Amat, zvec, &inc, yAz);
+    calc_yAz(M, N,  yvec, Amat, zvec, yAz);
     dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, AyAz, &inc);
 
-    Qcore = calc_F_part(M, N, yvec, Amat, zvec, &inc, ytmp);
-
+    Qcore = ddot_(M, yAz, &inc, yAz, &inc)/2;
+            
     for( i = 0; i < MAXITER; i++){
 
       dcopy_(N, AyAz, &inc, xtmp, &inc);
@@ -656,8 +656,8 @@ void mfista_L1_TV_core(double *yvec, double *Amat,
       FGP_L1(N, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
 	     &inc, pmat, qmat, rmat, smat, npmat, nqmat, xnew);
 
-      Fval = calc_F_part(M, N, yvec, Amat, xnew, &inc, ytmp);
-      Qval = calc_Q_part(N, xnew, zvec, c, &inc, AyAz, xtmp);
+      Fval = calc_F_part(M, N, yvec, Amat, xnew, ytmp);
+      Qval = calc_Q_part(N, xnew, zvec, c, AyAz, xtmp);
       Qval += Qcore;
 
       /*    printf("c = %g, F = %g, G = %g\n",c,Fval,Qval);*/
@@ -734,11 +734,11 @@ void mfista_L1_TV_core(double *yvec, double *Amat,
   mfista_result->maxiter = MAXITER;
 	    
   mfista_result->lambda_l1 = lambda_l1;
-  mfista_result->lambda_sqtv = 0;
+  mfista_result->lambda_tsv = 0;
   mfista_result->lambda_tv = lambda_tv;
 
   yAx  = alloc_vector(*M);
-  calc_yAz(M, N, yvec, Amat, xvec, &inc, yAx);
+  calc_yAz(M, N, yvec, Amat, xvec, yAx);
 
   /* mean square error */
   mfista_result->sq_error = 0;
@@ -761,7 +761,7 @@ void mfista_L1_TV_core(double *yvec, double *Amat,
     }
   }
 
-  mfista_result->sqtvcost = 0;
+  mfista_result->tsvcost = 0;
   mfista_result->tvcost = TV(NX, NY, xvec);
   mfista_result->finalcost = (mfista_result->sq_error)/2
     + lambda_l1*(mfista_result->l1cost)
@@ -846,10 +846,11 @@ void mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
     if((iter % 100) == 0)
       printf("%d cost = %f \n",(iter+1), cost[iter]);
 
-    calc_yAz(M, N,  yvec, Amat, zvec, &inc, yAz);
+    calc_yAz(M, N,  yvec, Amat, zvec, yAz);
     dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, AyAz, &inc);
 
-    Qcore = calc_F_L1(M, N, yvec, Amat, zvec, lambda_l1, &inc, ytmp);
+    Qcore =  ddot_(M, yAz, &inc, yAz, &inc)/2;
+    Qcore += lambda_l1*dasum_(N, zvec, &inc);
 
     for( i = 0; i < MAXITER; i++){
 
@@ -938,11 +939,11 @@ void mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
   mfista_result->maxiter = MAXITER;
 	    
   mfista_result->lambda_l1 = lambda_l1;
-  mfista_result->lambda_sqtv = 0;
+  mfista_result->lambda_tsv = 0;
   mfista_result->lambda_tv = lambda_tv;
 
   yAx  = alloc_vector(*M);
-  calc_yAz(M, N, yvec, Amat, xvec, &inc, yAx);
+  calc_yAz(M, N, yvec, Amat, xvec, yAx);
 
   /* mean square error */
   mfista_result->sq_error = 0;
@@ -965,7 +966,7 @@ void mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
     }
   }
 
-  mfista_result->sqtvcost = 0;
+  mfista_result->tsvcost = 0;
   mfista_result->tvcost = TV(NX, NY, xvec);
   mfista_result->finalcost = (mfista_result->sq_error)/2
     + lambda_l1*(mfista_result->l1cost)

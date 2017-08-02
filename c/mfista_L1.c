@@ -62,12 +62,13 @@ void usage(char *s)
 
 int main(int argc, char *argv[])
 {
-  double *y, *A, *xvec, cinit = CINIT, lambda_l1;
+  double *y, *A, *xvec, cinit = CINIT, lambda_l1, s_t, e_t;
   char init_fname[1024],fname[1024],log_fname[1024];
   int i, M, N, trans_flag = 0, init_flag = 0, nonneg_flag = 0,
     looe_flag = 0, log_flag = 0;
   unsigned long tmpdnum, dnum;
   struct RESULT mfista_result;
+  struct timespec time_spec1, time_spec2;
   FILE* log_fid;
 
   /* options */
@@ -97,10 +98,9 @@ int main(int argc, char *argv[])
   }
 
   M = atoi(argv[1]);
-
   printf("M is %d\n",M);
-  N = atoi(argv[2]);
 
+  N = atoi(argv[2]);
   printf("N is %d\n",N);
 
   /* allocate memory space start */ 
@@ -163,22 +163,30 @@ int main(int argc, char *argv[])
   else
     printf("\n");
 
-
   if (trans_flag ==1){ 
     transpose_matrix(A, N, M);
   }
 
   /* preparation end */
 
+  clock_gettime(CLOCK_MONOTONIC, &time_spec1);
+
   /* main loop */
 
   mfista_L1_core(y, A, &M, &N, lambda_l1, cinit,
 		 xvec, nonneg_flag, looe_flag, &mfista_result);
 
+  clock_gettime(CLOCK_MONOTONIC, &time_spec2);
+
   write_X_vector(argv[7], N, xvec);
 
   /* main loop end */
 
+  s_t = (double)time_spec1.tv_sec + (10e-9)*(double)time_spec1.tv_nsec;
+  e_t = (double)time_spec2.tv_sec + (10e-9)*(double)time_spec2.tv_nsec;
+  
+  mfista_result.comp_time = e_t-s_t;
+  
   /* output log */
 
   mfista_result.nonneg = nonneg_flag;
@@ -191,7 +199,6 @@ int main(int argc, char *argv[])
     mfista_result.in_fname = NULL;
 
   mfista_result.out_fname = argv[7];  
-  
   show_result(stdout,argv[0],&mfista_result);
 
   if(log_flag == 1){
@@ -206,5 +213,5 @@ int main(int argc, char *argv[])
   free(A);
   free(xvec);
 
-  return 0;
+  return(0);
 }

@@ -27,6 +27,11 @@
 
 /* memory allocation of matrix and vectors */
 
+int *alloc_int_vector(int length)
+{
+    return malloc(sizeof(int)*length);
+}
+
 double *alloc_vector(int length)
 {
     return malloc(sizeof(double)*length);
@@ -65,6 +70,18 @@ FILE* fopenw(char* fn){
     exit(1);
   }
   return(fp);
+}
+
+int read_int_vector(char *fname, int length, int *vector)
+{
+  FILE *fp;
+  int n;
+
+  fp = fopenr(fname);
+  n  = fread(vector, sizeof(int), length, fp);
+  fclose(fp);
+
+  return(n);
 }
 
 int read_V_vector(char *fname, int length, double *vector)
@@ -151,47 +168,47 @@ void transpose_matrix(double *matrix, int origheight, int origwidth)
 /* subroutines for mfista*/
 
 void calc_yAz(int *M, int *N,
-        double *yvec, double *Amat, double *zvec,
-        int *inc, double *yAz)
+	      double *yvec, double *Amat, double *zvec, double *yAz)
 {
+  int inc = 1;
   double alpha = -1, beta = 1;
 
   /* y - A x2 */
-  dcopy_(M, yvec, inc, yAz, inc);
-  dgemv_("N", M, N, &alpha, Amat, M, zvec, inc, &beta, yAz, inc);
+  dcopy_(M, yvec, &inc, yAz, &inc);
+  dgemv_("N", M, N, &alpha, Amat, M, zvec, &inc, &beta, yAz, &inc);
 }
 
 double calc_F_part(int *M, int *N,
 		   double *yvec, double *Amatrix,
-		   double *xvec, int *inc, double *buffvec)
+		   double *xvec, double *buffvec)
 {
+  int inc = 1;
   double term1, alpha = -1, beta = 1;
 
-  dcopy_(M, yvec, inc, buffvec, inc);
+  dcopy_(M, yvec, &inc, buffvec, &inc);
 
   dgemv_("N", M, N, &alpha, Amatrix, M, 
-	 xvec, inc, &beta, buffvec, inc);
+	 xvec, &inc, &beta, buffvec, &inc);
 
-  term1 = ddot_(M, buffvec, inc, buffvec, inc);
+  term1 = ddot_(M, buffvec, &inc, buffvec, &inc);
 
   return(term1/2);
 }
 
-double calc_Q_part(int *N, 
-		   double *xvec1, double *xvec2,
-		   double c, int *inc,
-		   double *AyAz, double *buffxvec1)
+double calc_Q_part(int *N, double *xvec1, double *xvec2,
+		   double c, double *AyAz, double *buffxvec1)
 {
+  int inc = 1;
   double term2, term3, alpha = -1;
 
   /* x1 - x2 */
-  dcopy_(N, xvec1, inc, buffxvec1, inc);
-  daxpy_(N, &alpha, xvec2, inc, buffxvec1, inc);
+  dcopy_(N, xvec1, &inc, buffxvec1, &inc);
+  daxpy_(N, &alpha, xvec2, &inc, buffxvec1, &inc);
 
   /* (x1 - x2)'A'(y - A x2) */
-  term2 = ddot_(N, AyAz, inc, buffxvec1, inc);
+  term2 = ddot_(N, AyAz, &inc, buffxvec1, &inc);
   /* (x1 - x2)'(x1 - x2) */
-  term3 = ddot_(N, buffxvec1, inc, buffxvec1, inc);
+  term3 = ddot_(N, buffxvec1, &inc, buffxvec1, &inc);
 
   return(-term2+c*term3/2);
 }
@@ -386,8 +403,8 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
   if(mfista_result->lambda_l1 != 0)
     fprintf(fid," Lambda_1:               %e\n", mfista_result->lambda_l1);
 
-  if(mfista_result->lambda_sqtv != 0)
-    fprintf(fid," Lambda_sqTV:            %e\n", mfista_result->lambda_sqtv);
+  if(mfista_result->lambda_tsv != 0)
+    fprintf(fid," Lambda_TSV:             %e\n", mfista_result->lambda_tsv);
 
   if(mfista_result->lambda_tv != 0)
     fprintf(fid," Lambda_TV:              %e\n", mfista_result->lambda_tv);
@@ -398,8 +415,9 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
   fprintf(fid," Results:\n\n");
 
   fprintf(fid," # of iterations:        %d\n", mfista_result->ITER);
-  fprintf(fid," cost:                   %e\n\n", mfista_result->finalcost);
-
+  fprintf(fid," cost:                   %e\n", mfista_result->finalcost);
+  fprintf(fid," computaion time[sec]:   %e\n\n", mfista_result->comp_time);
+  
   fprintf(fid," x is saved to:          %s\n", mfista_result->out_fname);
   fprintf(fid,"\n");
 
@@ -410,8 +428,8 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
   if(mfista_result->lambda_l1 != 0)
     fprintf(fid," L1 cost:                %e\n", mfista_result->l1cost);
 
-  if(mfista_result->lambda_sqtv != 0)
-    fprintf(fid," sqTV cost:              %e\n", mfista_result->sqtvcost);
+  if(mfista_result->lambda_tsv != 0)
+    fprintf(fid," TSV cost:               %e\n", mfista_result->tsvcost);
 
   if(mfista_result->lambda_tv != 0)
     fprintf(fid," TV cost:                %e\n", mfista_result->tvcost);

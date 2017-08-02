@@ -27,13 +27,13 @@
 
 void usage(char *s)
 {
-  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-nonneg} {-log log_fname}\n\n",s);
+  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tsv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-looe} {-nonneg} {-log log_fname}\n\n",s);
   printf("  <int m>: number of row of A.\n");
   printf("  <int n>: number of column of A.\n");
   printf("  <V fname>: file name of V.\n");
   printf("  <A fname>: file name of A.\n");
   printf("  <double lambda_l1>: value of lambda_l1. Positive.\n");
-  printf("  <double lambda_tv>: value of lambda_tv. Positive.\n");
+  printf("  <double lambda_tsv>: value of lambda_tsv. Positive.\n");
   printf("  <double c>: value of c. Positive.\n");
   printf("  <X outfile>: file name to write X.\n\n");
 
@@ -43,15 +43,16 @@ void usage(char *s)
   printf("  {-t}: use this option if A is stored with row major mode.\n");
   printf("  {-rec NX}: use this option if image is not square but rectangular.\n");
   printf("             NX is the length of one dimension of the image.\n");
+  printf("  {-looe}: Compute approximation of LOOE.\n");
   printf("  {-nonneg}: Use this option if x is nonnegative.\n");
   printf("  {-log log_fname}: Specify log file.\n\n");
-  
+
   printf(" This program solves \n\n");
 
-  printf(" argmin |v-Ax|_2^2/2 + lambda_l1 |x|_1 + lambda_tv TV(x)\n\n");
+  printf(" argmin |v-Ax|_2^2/2 + lambda_l1 |x|_1 + lambda_tsv TSV(x)\n\n");
 
   printf(" If {-nonneg} option is used, x vector is restricted to be nonnegative.\n\n");
-  
+
   printf(" c is a parameter used for stepsize. Larger the algorithm is stable. \n");
   printf(" but too large c makes convergence slow. Around 50000 is fine.\n\n");
 
@@ -64,11 +65,12 @@ void usage(char *s)
 
 int main(int argc, char *argv[])
 {
-  double *y, *A, *xvec, cinit = CINIT, lambda_l1, lambda_tv, s_t, e_t;
+  double *y, *A, *xvec, cinit = CINIT, lambda_l1, lambda_tsv, s_t, e_t;
   char init_fname[1024],fname[1024],log_fname[1024];
-  int i, M, N, NX, NY, trans_flag = 0, rec_flag = 0, init_flag = 0, log_flag = 0,
-    nonneg_flag = 0;
-  unsigned long tmpdnum, dnum; 
+  int i, M, N, NX, NY,
+    trans_flag = 0, rec_flag = 0, init_flag = 0, nonneg_flag = 0, looe_flag = 0,
+    log_flag = 0;
+  unsigned long tmpdnum, dnum;
   struct RESULT mfista_result;
   struct timespec time_spec1, time_spec2;
   FILE* log_fid;
@@ -85,6 +87,9 @@ int main(int argc, char *argv[])
       rec_flag = 1;
       ++i;
       NX = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i],"-looe") == 0){
+      looe_flag = 1; 
     }
     else if(strcmp(argv[i],"-log") == 0){
       log_flag = 1;
@@ -130,9 +135,8 @@ int main(int argc, char *argv[])
     if(dnum != N)
       printf("Number of read data is shorter than expected.\n");
   }
-  else{
+  else
     clear_matrix(xvec, N, 1);
-  }
 
   /* read data matrix start */
 
@@ -160,8 +164,8 @@ int main(int argc, char *argv[])
   lambda_l1 = atof(argv[5]);
   printf("lambda_l1 = %g\n",lambda_l1);
 
-  lambda_tv = atof(argv[6]);
-  printf("lambda_tv = %g\n",lambda_tv);
+  lambda_tsv = atof(argv[6]);
+  printf("lambda_tsv = %g\n",lambda_tsv);
 
   cinit = atof(argv[7]);
   printf("c = %g\n",cinit);
@@ -172,28 +176,24 @@ int main(int argc, char *argv[])
   if (log_flag ==1)
     printf("Log will be saved to %s.\n",log_fname);
 
+  if (looe_flag ==1)
+    printf("Approximation of LOOE will be computed.\n\n");
+  else
+    printf("\n");
+
   if (trans_flag ==1){ 
     transpose_matrix(A, N, M);
   }
 
-  printf("\n");
-  
   /* preparation end */
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec1);
 
   /* main loop */
 
-  if(nonneg_flag == 0){
-    mfista_L1_TV_core(y, A, &M, &N, NX, NY,
-		      lambda_l1, lambda_tv, cinit, xvec,
-		      &mfista_result);
-  }
-  else if(nonneg_flag == 1){
-    mfista_L1_TV_core_nonneg(y, A, &M, &N, NX, NY,
-			     lambda_l1, lambda_tv, cinit, xvec,
-			     &mfista_result);
-  }
+  mfista_L1_TSV_core(y, A, &M, &N, NX, NY,
+		     lambda_l1, lambda_tsv, cinit, xvec, nonneg_flag, looe_flag,
+		     &mfista_result);
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 
