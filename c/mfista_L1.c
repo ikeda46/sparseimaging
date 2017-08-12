@@ -48,12 +48,12 @@ void usage(char *s)
 
   printf(" argmin |v-Ax|_2^2/2 + lambda_l1 |x|_1\n\n");
 
+  printf(" and write x to <X out file>\n\n");
+
   printf(" If {-nonneg} option is used, x vector is restricted to be nonnegative.\n\n");
 
-  printf(" c is a parameter used for stepsize. Larger the algorithm is stable. \n");
-  printf(" but too large c makes convergence slow. Around 50000 is fine.\n\n");
-
-  printf(" and writeh x to <X out file>\n\n");
+  printf(" c is a parameter used for stepsize. Large c makes the algorithm\n");
+  printf(" stable but slow. Around 500000 is fine.\n\n");
 
   printf(" Files are binary. Read and Write with fread() and fwrite().\n");
   printf(" A is col major. This is C program but blas is based on fortran.\n\n");
@@ -64,10 +64,11 @@ int main(int argc, char *argv[])
 {
   double *y, *A, *xvec, cinit = CINIT, lambda_l1, s_t, e_t;
   char init_fname[1024],fname[1024],log_fname[1024];
-  int i, M, N, trans_flag = 0, init_flag = 0, nonneg_flag = 0,
+  int i, M, N, iter, trans_flag = 0, init_flag = 0, nonneg_flag = 0,
     looe_flag = 0, log_flag = 0;
   unsigned long tmpdnum, dnum;
-  struct RESULT mfista_result;
+  struct IO_FNAMES mfista_io;
+  struct RESULT    mfista_result;
   struct timespec time_spec1, time_spec2;
   FILE* log_fid;
 
@@ -173,8 +174,7 @@ int main(int argc, char *argv[])
 
   /* main loop */
 
-  mfista_L1_core(y, A, &M, &N, lambda_l1, cinit,
-		 xvec, nonneg_flag, looe_flag, &mfista_result);
+  iter = mfista_L1_core(y, A, &M, &N, lambda_l1, cinit, xvec, nonneg_flag);
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 
@@ -182,27 +182,35 @@ int main(int argc, char *argv[])
 
   /* main loop end */
 
-  s_t = (double)time_spec1.tv_sec + (10e-9)*(double)time_spec1.tv_nsec;
-  e_t = (double)time_spec2.tv_sec + (10e-9)*(double)time_spec2.tv_nsec;
+  s_t = (double)time_spec1.tv_sec + (10e-10)*(double)time_spec1.tv_nsec;
+  e_t = (double)time_spec2.tv_sec + (10e-10)*(double)time_spec2.tv_nsec;
   
   mfista_result.comp_time = e_t-s_t;
+  mfista_result.ITER = iter;
+  mfista_result.nonneg = nonneg_flag;
+
+  calc_result(y, A, &M, &N, 0, 0, lambda_l1, 0, 0,
+	      xvec, nonneg_flag, looe_flag, &mfista_result);
   
   /* output log */
 
-  mfista_result.nonneg = nonneg_flag;
-  mfista_result.v_fname = argv[3];
-  mfista_result.A_fname = argv[4];
+  mfista_io.fft      = 0;
+  mfista_io.fft_fname = NULL;
+  mfista_io.v_fname = argv[3];
+  mfista_io.A_fname = argv[4];
 
   if(init_flag == 1)
-    mfista_result.in_fname = init_fname;
+    mfista_io.in_fname = init_fname;
   else
-    mfista_result.in_fname = NULL;
+    mfista_io.in_fname = NULL;
 
-  mfista_result.out_fname = argv[7];  
+  mfista_io.out_fname = argv[7];
+  show_io_fnames(stdout,argv[0],&mfista_io);
   show_result(stdout,argv[0],&mfista_result);
 
   if(log_flag == 1){
     log_fid = fopenw(log_fname);
+    show_io_fnames(log_fid,argv[0],&mfista_io);
     show_result(log_fid,argv[0],&mfista_result);
     fclose(log_fid);
   }

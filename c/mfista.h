@@ -54,26 +54,33 @@ struct RESULT{
   int ITER;
   int nonneg;
   double lambda_l1;
-  double lambda_tsv;
   double lambda_tv;
+  double lambda_tsv;
   double sq_error;
   double mean_sq_error;
   double l1cost;
-  double tsvcost;
   double tvcost;
-  double looe;
+  double tsvcost;
+  double looe_m;
+  double looe_std;
   double Hessian_positive;
   double finalcost;
   double comp_time;
+  double *residual;
+};
+
+struct IO_FNAMES{
+  unsigned int fft;
+  char *fft_fname;
   char *v_fname;
   char *A_fname;
-  char *out_fname;
   char *in_fname;
+  char *out_fname;
 };
 
 /* memory allocation of matrix and vectors */
 
-extern int *alloc_int_vector(int length);
+extern int    *alloc_int_vector(int length);
 extern double *alloc_vector(int length);
 extern double *alloc_matrix(int height, int width);
 extern void    clear_matrix(double *matrix, int height, int width);
@@ -84,7 +91,8 @@ extern FILE* fopenr(char* fn);
 extern FILE* fopenw(char* fn);
 extern int read_int_vector(char *fname, int length, int *vector);
 extern int read_V_vector(char *fname, int length, double *vector);
-extern unsigned long read_A_matrix(char *fname, int height, int width, double *matrix);
+extern unsigned long read_A_matrix(char *fname, int height, int width,
+				   double *matrix);
 extern int write_X_vector(char *fname, int length, double *vector);
 
 /* simple matrix operations */
@@ -102,21 +110,14 @@ extern double calc_Q_part(int *N, double *xvec1, double *xvec2,
 			  double c, double *AyAz, double *buffxvec1);
 /* thresholding */
 
-extern void soft_threshold(double *vector, int length, double eta, 
-			   double *newvec);
+extern void soft_threshold(double *vec, int length, double eta, double *nvec);
 
-extern void soft_threshold_nonneg(double *vector, int length, double eta, 
-				  double *newvec);
+extern void soft_threshold_nonneg(double *vec, int length, double eta, 
+				  double *nvec);
 
-extern int find_active_set(int N, double *xvec, int *indx_list);
+/* Some routines for TV */
 
-/* index transform */
-
-extern int i2r(int i, int NX);
-
-extern int i2c(int i, int NX);
-
-extern int rc2i(int r, int c, int NX);
+extern double TV(int NX, int NY, double *xvec);
 
 /* Some routines for TSV */
 
@@ -124,57 +125,91 @@ extern double TSV(int NX, int NY, double *xvec);
 
 extern void d_TSV(int NX, int NY, double *xvec, double *dvec);
 
-/* Some routines for computing LOOE */
-
-extern double *shrink_A(int M, int N, int N_active, int *indx_list,
-			double *Amat);
-
-extern int solve_lin_looe(int *NA, int *NB, double *Hessian, double *B);
-
-extern double compute_LOOE_core(int *M, int N_active, 
-				double *yvec, double *Amat, double *xvec,
-				double *yAx,  double *Amat_s, double *Hessian);
-
 /* subroutines for mfista_L1 */
 
-extern void mfista_L1_core(double *yvec, double *Amat, int *M, int *N, 
+extern int mfista_L1_core(double *yvec, double *Amat, int *M, int *N, 
 			   double lambda, double cinit,
-			   double *xvec, int nonneg_flag, int looe_flag,
-			   struct RESULT *mfista_result);
+			   double *xvec, int nonneg_flag);
 
-/* subroutines for mfista_L1_TV_nonneg */
+/* subroutines for mfista_L1_TV */
 
-extern void mfista_L1_TV_core(double *yvec, double *Amat, 
-			      int *M, int *N, int NX, int NY,
-			      double lambda, double lambda_tv, double cinit,
-			      double *xvec,
-			      struct RESULT *mfista_result);
+extern void FGP_L1(int *N, int NX, int NY,
+		   double *bvec, double lambda_l1, double lambda_tv, int ITER,
+		   double *pmat, double *qmat, double *rmat, double *smat, 
+		   double *npmat, double *nqmat, double *xvec);
 
-/* subroutines for mfista_L1_TV_nonneg */
+extern void FGP_nonneg(int *N, int NX, int NY,
+		       double *bvec, double lambda_tv, int ITER,
+		       double *pmat, double *qmat, double *rmat, double *smat, 
+		       double *npmat, double *nqmat, double *xvec);
 
-extern void mfista_L1_TV_core_nonneg(double *yvec, double *Amat, 
-				     int *M, int *N, int NX, int NY,
-				     double lambda, double lambda_tv, double cinit,
-				     double *xvec,
-				     struct RESULT *mfista_result);
+extern int mfista_L1_TV_core(double *yvec, double *Amat, 
+			     int *M, int *N, int NX, int NY,
+			     double lambda, double lambda_tv, double cinit,
+			     double *xvec);
+
+extern int mfista_L1_TV_core_nonneg(double *yvec, double *Amat, 
+				    int *M, int *N, int NX, int NY,
+				    double lambda, double lambda_tv, double cinit,
+				    double *xvec);
 
 /* subroutines for mfista_L1_TSV_nonneg */
 
-extern void mfista_L1_TSV_core(double *yvec, double *Amat, 
-			       int *M, int *N, int NX, int NY,
-			       double lambda, double lambda_tv, double cinit,
-			       double *xvec, int nonneg_flag, int looe_flag,
-			       struct RESULT *mfista_result);
+extern int mfista_L1_TSV_core(double *yvec, double *Amat, 
+			      int *M, int *N, int NX, int NY,
+			      double lambda, double lambda_tv, double cinit,
+			      double *xvec, int nonneg_flag);
 
 /* subroutines for mfista_L1_TSV_fftw */
 
-extern void mfista_L1_TSV_core_fftw(doublecomplex *yf, double *mask_h,
-				    int M, int *N, int NX, int NY,
-				    double lambda_l1, double lambda_tsv, double cinit,
-				    double *xvec, int nonneg_flag, 
-				    struct RESULT *mfista_result);
+extern int mfista_L1_core_fft(doublecomplex *yf, double *mask_h,
+			      int *N, int NX, int NY,
+			      double lambda_l1, double cinit,
+			      double *xvec,
+			      unsigned int fftw_plan_flag, int nonneg_flag);
+
+extern int mfista_L1_TV_core_fft(doublecomplex *yf, double *mask_h,
+				 int *N, int NX, int NY,
+				 double lambda_l1, double lambda_tv, double cinit,
+				 double *xvec, unsigned int fftw_plan_flag);
+
+extern int mfista_L1_TV_core_nonneg_fft(doublecomplex *yf, double *mask_h,
+					int *N, int NX, int NY,
+					double lambda_l1, double lambda_tv, double cinit,
+					double *xvec, unsigned int fftw_plan_flag);
+
+extern int mfista_L1_TSV_core_fft(doublecomplex *yf, double *mask_h,
+				  int *N, int NX, int NY,
+				  double lambda_l1, double lambda_tsv, double cinit,
+				  double *xvec,
+				  unsigned int fftw_plan_flag, int nonneg_flag);
+
+/* looe */
+
+extern double compute_LOOE_L1(int *M, int *N, double lambda_l1,
+			      double *yvec, double *Amat, double *xvec, double *yAx,
+			      double *looe_m, double *looe_std);
+
+extern double compute_LOOE_L1_TSV(int *M, int *N, int NX, int NY,
+				  double lambda_l1, double lambda_tsv,
+				  double *yvec, double *Amat, double *xvec, double *yAx,
+				  double *looe_m, double *looe_std);
 
 /* output */
+
+extern void calc_result(double *yvec, double *Amat,
+			int *M, int *N, int NX, int NY,
+			double lambda_l1, double lambda_tv, double lambda_tsv,
+			double *xvec, int nonneg_flag, int looe_flag,
+			struct RESULT *mfista_result);
+
+extern void calc_result_fft(doublecomplex *yf, double *mask_h,
+			    int M, int *N, int NX, int NY,
+			    double lambda_l1, double lambda_tv, double lambda_tsv,
+			    double *xvec,
+			    struct RESULT *mfista_result);
+
+extern void show_io_fnames(FILE *fid, char *fname, struct IO_FNAMES *mfista_io);
 
 extern void show_result(FILE *fid, char *fname, struct RESULT *mfista_result);
 

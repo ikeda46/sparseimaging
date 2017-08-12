@@ -24,26 +24,6 @@
 */ 
 #include "mfista.h" 
 
-double TSV(int NX, int NY, double *xvec)
-{
-  int i, j;
-  double tsv = 0;
-
-  for(i = 0; i < NX-1; ++i)
-    for(j = 0; j < NY-1; ++j){
-      tsv += pow((xvec[NX*j+i]-xvec[NX*j+i+1]),2.0);
-      tsv += pow((xvec[NX*j+i]-xvec[NX*(j+1)+i]),2.0);
-    }
-
-  for(i = 0; i < NX-1; ++i)
-    tsv += pow((xvec[NX*(NY-1)+i]-xvec[NX*(NY-1)+i+1]),2.0);
-
-  for(j = 0; j < NY-1; ++j)
-    tsv += pow((xvec[NX*j+(NX-1)]-xvec[NX*(j+1)+(NX-1)]),2.0);
-
-  return(tsv);
-}
-
 double calc_F_TSV_part(int *M, int NX, int NY, double *yAx, double *xvec, double lambda_tsv)
 {
   int inc = 1;
@@ -53,29 +33,6 @@ double calc_F_TSV_part(int *M, int NX, int NY, double *yAx, double *xvec, double
   term2 = TSV(NX, NY, xvec);
 
   return(term1/2+lambda_tsv*term2);
-}
-
-void d_TSV(int NX, int NY, double *xvec, double *dvec)
-{
-  int i, j;
-
-  for(j = 0; j < NY; j++) dvec[NX*j+NX-1] = 0;
-
-  for(i = 0; i < NX-1; i++)
-    for(j = 0; j < NY; j++)
-      dvec[NX*j+i] = 2*(xvec[NX*j+i]-xvec[NX*j+i+1]);
-
-  for(i = 1; i < NX; i++)
-    for(j = 0; j < NY; j++)
-      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*j+i-1]);
-
-  for(i = 0; i < NX; i++)
-    for(j = 0; j < NY-1; j++)
-      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*(j+1)+i]);
-
-  for(i = 0; i < NX; i++)
-    for(j = 1; j < NY; j++)
-      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*(j-1)+i]);
 }
 
 void dF_dx(int *M, int *N, int NX, int NY,
@@ -94,95 +51,14 @@ void dF_dx(int *M, int *N, int NX, int NY,
 
 }
 
-double d2_TSV(int i, int NX, int NY)
-/* Return 4 if i is on corner. Return 6 if it is on an edge, 
-and return 8 if it belongs to the interior. */
-{
-  int r, c;
-
-  r = i2r(i, NX);
-  c = i2c(i, NX);
-
-  if(r > 0 && r < NX-1){
-    if(c > 0 && c < NX-1) return(8.0);
-    else                  return(6.0);
-  }
-  else{
-    if(c > 0 && c < NX-1) return(6.0);
-    else                  return(4.0);
-  }
-  
-}
-
-double *compute_Hessian_L1_TSV(int *M, int NX, int NY,
-				double lambda_tsv, int *indx_list,
-				double *Amat_s, int N_active)
-{
-  int i,j;
-  double *Hessian, alpha = 1, beta = 0;
-
-  printf("The size of Hessian is %d x %d. ",N_active,N_active);
-
-  Hessian = alloc_matrix(N_active,N_active);
-
-  for(i=0;i<N_active;i++)
-    for(j=0;j<N_active;j++)
-      Hessian[i*N_active+j]=0;
-
-  dsyrk_("L", "T", &N_active, M, &alpha, Amat_s, M,
-	 &beta, Hessian, &N_active);
-
-  for(i=0;i<N_active;i++){
-    j = indx_list[i];
-    Hessian[i*N_active+i] += lambda_tsv*d2_TSV(j, NX, NY);
-  }
-  printf("Done.\n");
-  return(Hessian);
-}
-
-double compute_LOOE_L1_TSV(int *M, int *N, int NX, int NY,
-			    double lambda_l1, double lambda_tsv,
-			    double *yvec, double *Amat, double *xvec,
-			    double *yAx)
-{
-  double *Amat_s, *Hessian, LOOE;
-  int    N_active, *indx_list;
-
-  /* computing LOOE */
-
-  indx_list = (int *)malloc(sizeof(int)*(*N));
-
-  N_active = find_active_set(*N, xvec, indx_list);
-
-  Amat_s = shrink_A(*M, *N, N_active, indx_list, Amat);
-
-  printf("The number of active components is %d\n",N_active);
-
-  printf("Computing Hessian matrix.\n");
-  Hessian = compute_Hessian_L1_TSV(M, NX, NY,
-				    lambda_tsv, indx_list, Amat_s, N_active);
-
-  printf("\n");
-  LOOE = compute_LOOE_core(M, N_active, yvec, Amat, xvec, yAx, Amat_s, Hessian);
-
-  printf("LOOE = %lg\n",LOOE);
-
-  free(Amat_s);
-  free(Hessian);
-  free(indx_list);
-
-  return(LOOE);
-}
-
-void mfista_L1_TSV_core(double *yvec, double *Amat, 
-			  int *M, int *N, int NX, int NY,
-			  double lambda_l1, double lambda_tsv, double cinit,
-			  double *xvec, int nonneg_flag, int looe_flag,
-			  struct RESULT *mfista_result)
+int mfista_L1_TSV_core(double *yvec, double *Amat, 
+		       int *M, int *N, int NX, int NY,
+		       double lambda_l1, double lambda_tsv, double cinit,
+		       double *xvec, int nonneg_flag)
 {
   void (*soft_th)(double *vector, int length, double eta, double *newvec);
   int i, iter, inc = 1;
-  double *xtmp, *xnew, *ytmp, *zvec, *dfdx, *yAx,
+  double *xtmp, *xnew, *ytmp, *zvec, *dfdx,
     Qcore, Fval, Qval, c, cinv, tmpa, l1cost, costtmp, *cost,
     mu=1, munew, alpha = 1;
 
@@ -205,7 +81,7 @@ void mfista_L1_TSV_core(double *yvec, double *Amat,
     soft_th=soft_threshold_nonneg;
   else {
     printf("nonneg_flag must be chosen properly.\n");
-    return;
+    return(0);
   }
 
   /* initialize xvec */
@@ -300,71 +176,7 @@ void mfista_L1_TSV_core(double *yvec, double *Amat,
   else
     printf("%d cost = %f \n",(iter+1), cost[iter]);
 
-  /* sending summary of results */
-
   printf("\n");
-
-  mfista_result->M = (*M);
-  mfista_result->N = (*N);
-  mfista_result->NX = NX;
-  mfista_result->NY = NY;
-  mfista_result->ITER = iter+1;
-  mfista_result->maxiter = MAXITER;
-	    
-  mfista_result->lambda_l1 = lambda_l1;
-  mfista_result->lambda_tsv = lambda_tsv;
-  mfista_result->lambda_tv = 0;
-
-  yAx  = alloc_vector(*M);
-  calc_yAz(M, N, yvec, Amat, xvec, yAx);
-
-  /* mean square error */
-  mfista_result->sq_error = 0;
-
-  for(i = 0;i< (*M);i++){
-    mfista_result->sq_error += yAx[i]*yAx[i];
-  }
-
-  /* average of mean square error */
-
-  mfista_result->mean_sq_error = mfista_result->sq_error/((double)(*M));
-
-  mfista_result->l1cost   = 0;
-  mfista_result->N_active = 0;
-
-  for(i = 0;i < (*N);i++){
-    tmpa = fabs(xvec[i]);
-    if(tmpa > 0){
-      mfista_result->l1cost += tmpa;
-      ++ mfista_result->N_active;
-    }
-  }
-
-  mfista_result->tsvcost = TSV(NX, NY, xvec);
-  mfista_result->tvcost = 0;
-  mfista_result->finalcost = (mfista_result->sq_error)/2
-    + lambda_l1*(mfista_result->l1cost)
-    + lambda_tsv*(mfista_result->tsvcost);
-
-  /* computing LOOE */
-
-  if(looe_flag == 1){
-    mfista_result->looe = compute_LOOE_L1_TSV(M, N, NX, NY, lambda_l1, lambda_tsv,
-					       yvec, Amat, xvec, yAx);
-    if(mfista_result->looe == -1){
-      mfista_result->Hessian_positive = 0;
-      mfista_result->looe = 0;
-    }
-    else{
-      mfista_result->Hessian_positive = 1;
-    }
-  }
-  else{
-    mfista_result->looe = 0;
-    mfista_result->Hessian_positive = -1;
-  }
-    
-  free(yAx);
 
   /* clear memory */
 
@@ -374,5 +186,6 @@ void mfista_L1_TSV_core(double *yvec, double *Amat,
   free(xtmp);
   free(ytmp);
   free(zvec);
-
+  return(iter+1);
 }
+

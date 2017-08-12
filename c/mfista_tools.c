@@ -241,133 +241,193 @@ void soft_threshold(double *vector, int length, double eta,
     }
 }
 
-int find_active_set(int N, double *xvec, int *indx_list)
-{
-  int i, N_active;
 
-  N_active = 0;
+/* TV */
+
+double TV(int NX, int NY, double *xvec)
+{
+  int i, j;
+  double tv = 0;
+
+  for(i = 0; i < NX-1; ++i) for(j = 0; j < NY-1; ++j)
+      tv += sqrt(pow((xvec[NX*j+i]-xvec[NX*j+i+1]),2.0)
+		 +pow((xvec[NX*j+i]-xvec[NX*(j+1)+i]),2.0));
+
+  for(i = 0; i < NX-1; ++i)
+    tv += fabs(xvec[NX*(NY-1)+i]- xvec[NX*(NY-1)+i+1]);
+
+  for(j = 0; j < NY-1; ++j)
+    tv += fabs(xvec[NX*j+NX-1]  - xvec[NX*(j+1)+NX-1]);
+
+  return(tv);
+}
+
+/* TSV */
+
+double TSV(int NX, int NY, double *xvec)
+{
+  int i, j;
+  double tsv = 0;
+
+  for(i = 0; i < NX-1; ++i)
+    for(j = 0; j < NY-1; ++j){
+      tsv += pow((xvec[NX*j+i]-xvec[NX*j+i+1]),2.0);
+      tsv += pow((xvec[NX*j+i]-xvec[NX*(j+1)+i]),2.0);
+    }
+
+  for(i = 0; i < NX-1; ++i)
+    tsv += pow((xvec[NX*(NY-1)+i]-xvec[NX*(NY-1)+i+1]),2.0);
+
+  for(j = 0; j < NY-1; ++j)
+    tsv += pow((xvec[NX*j+(NX-1)]-xvec[NX*(j+1)+(NX-1)]),2.0);
+
+  return(tsv);
+}
+
+void d_TSV(int NX, int NY, double *xvec, double *dvec)
+{
+  int i, j;
+
+  for(j = 0; j < NY; j++) dvec[NX*j+NX-1] = 0;
+
+  for(i = 0; i < NX-1; i++)
+    for(j = 0; j < NY; j++)
+      dvec[NX*j+i] = 2*(xvec[NX*j+i]-xvec[NX*j+i+1]);
+
+  for(i = 1; i < NX; i++)
+    for(j = 0; j < NY; j++)
+      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*j+i-1]);
+
+  for(i = 0; i < NX; i++)
+    for(j = 0; j < NY-1; j++)
+      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*(j+1)+i]);
+
+  for(i = 0; i < NX; i++)
+    for(j = 1; j < NY; j++)
+      dvec[NX*j+i] += 2*(xvec[NX*j+i]-xvec[NX*(j-1)+i]);
+}
+
+/* results */
+
+void calc_result(double *yvec, double *Amat,
+		 int *M, int *N, int NX, int NY,
+		 double lambda_l1, double lambda_tv, double lambda_tsv,
+		 double *xvec, int nonneg_flag, int looe_flag,
+		 struct RESULT *mfista_result)
+{
+  int i;
+  double *yAx, tmpa;
+
+  printf("summarizing result.\n");
+
+  /* allocate memory space start */ 
+
+  yAx  = alloc_vector(*M);
+  mfista_result->residual = alloc_vector(*M);
   
-  for(i = 0;i < N;i++){
-    if(fabs(xvec[i]) > 0){
-	indx_list[N_active] = i;
-	N_active++;
-      }
+  /* summary of results */
+
+  mfista_result->M = (*M);
+  mfista_result->N = (*N);
+  mfista_result->NX = NX;
+  mfista_result->NY = NY;
+  mfista_result->maxiter = MAXITER;
+	    
+  mfista_result->lambda_l1 = lambda_l1;
+  mfista_result->lambda_tv = lambda_tv;
+  mfista_result->lambda_tsv = lambda_tsv;
+
+  calc_yAz(M, N, yvec, Amat, xvec, yAx);
+
+  /* mean square error */
+  mfista_result->sq_error = 0;
+
+  for(i = 0;i< (*M);i++){
+    mfista_result->sq_error += yAx[i]*yAx[i];
+    mfista_result->residual[i] = yAx[i];
   }
 
-  return(N_active);
-}
+  /* average of mean square error */
 
-/* index transform */
+  mfista_result->mean_sq_error = mfista_result->sq_error/((double)(*M));
 
-int i2r(int i, int NX)
-{
-  return(i%NX);
-}
+  mfista_result->l1cost   = 0;
+  mfista_result->N_active = 0;
 
-int i2c(int i, int NX)
-{
-  double tmp1, tmp2;
-
-  tmp1 = (double)i;
-  tmp2 = (double)NX;
-  
-  return((int)(ceil(((tmp1+1)/tmp2))-1));
-}
-
-int rc2i(int r, int c, int NX)
-{
-  return( r + NX*c);
-}
-
-/* Some routines for computing LOOE */
-
-double *shrink_A(int M, int N, int N_active, int *indx_list,
-	      double *Amat)
-{
-  int i, j, k;
-  double *Amat_s;
-
-  Amat_s = alloc_matrix(M, N_active);
-
-  for(j = 0; j < N_active; j++){
-    k = indx_list[j];
-    for(i = 0; i < M; i++) Amat_s[j*M+i] = Amat[k*M+i];
+  for(i = 0;i < (*N);i++){
+    tmpa = fabs(xvec[i]);
+    if(tmpa > 0){
+      mfista_result->l1cost += tmpa;
+      ++ mfista_result->N_active;
+    }
   }
 
-  return(Amat_s);
-}
+  mfista_result->finalcost = (mfista_result->sq_error)/2;
 
-int solve_lin_looe(int *NA, int *NB, double *Hessian, double *B)
-/* Solve A*X = B
-   A is a symmetric real matrix with *NA x *NA.
-   B is a real matrix with *NA x *NB.
-   UpLo is "U" or "L." It tells which part of A is used.
-   The function is void and the result is stored in B. */
-{
-  int  info, lda, ldb;
-  char UpLo[2] = {'L','\0'};;
-    
-    lda  = *NA;
-    ldb  = lda;
-    
-    info = 0;
+  if(lambda_l1 > 0)
+    mfista_result->finalcost += lambda_l1*(mfista_result->l1cost);
 
-    printf("Solving a linear equation.\n");
+  if(lambda_tsv > 0){
+    mfista_result->tsvcost = TSV(NX, NY, xvec);
+    mfista_result->finalcost += lambda_tsv*(mfista_result->tsvcost);
+  }
+  else if (lambda_tv > 0){
+    mfista_result->tvcost = TV(NX, NY, xvec);
+    mfista_result->finalcost += lambda_tv*(mfista_result->tvcost);
+  }
 
-    dposv_(UpLo, NA, NB, Hessian, &lda, B, &ldb, &info );
+  /* computing LOOE */
 
-    printf("solved.\n");
-
-    if (info < 0)      printf("DPOSV: The matrix had an illegal value.\n");
-    else if (info > 0) printf("DPOSV: The Hessian matrix is not positive definite.\n");
-
-    return(info);
-}
-
-double compute_LOOE_core(int *M, int N_active, 
-			 double *yvec, double *Amat, double *xvec,
-			 double *yAx,  double *Amat_s, double *Hessian)
-{
-  int i, j, m, n_s;
-  double LOOE, *At, *dvec, tmp, info;
-
-  m   = *M;          /* size of Hessian */
-  n_s = N_active;  /* number of columns of Amat_s */
-
-  At  = alloc_matrix(n_s,m);
-
-  dvec = alloc_vector(m);
-
-  for(i = 0;i < m; i++)
-    for(j = 0;j < n_s; j++)
-      At[n_s*i + j] = Amat_s[m*j+i];
-
-  info = solve_lin_looe(&n_s, &m, Hessian, At);
-
-  if(info == 0){
-
-    for(i = 0;i < m;i++){
-      dvec[i]=0;
-      for(j = 0;j < n_s;j++)
-	dvec[i]+= Amat_s[m*j+i]*At[n_s*i+j];
+  if(looe_flag == 1 && lambda_tv ==0 ){
+    if(lambda_tsv == 0){
+      mfista_result->looe_m = compute_LOOE_L1(M, N, lambda_l1, yvec, Amat, xvec, yAx,
+					    &(mfista_result->looe_m), &(mfista_result->looe_std));
+      printf("%le\n",mfista_result->looe_m);
     }
-    
-    LOOE = 0;
-    
-    for(i=0;i<m;++i){
-      tmp = yAx[i]/(1-dvec[i]);
-      LOOE += tmp*tmp;
+    else
+      mfista_result->looe_m = compute_LOOE_L1_TSV(M, N, NX, NY, lambda_l1, lambda_tsv,
+						yvec, Amat, xvec, yAx,
+						&(mfista_result->looe_m), &(mfista_result->looe_std));
+    if(mfista_result->looe_m == -1){
+      mfista_result->Hessian_positive = 0;
+      mfista_result->looe_m = 0;
     }
-    LOOE /=(2*((double)m));
-
-    free(dvec);
-    free(At);
-
-    return(LOOE);
+    else{
+      mfista_result->Hessian_positive = 1;
+    }
   }
   else{
-    return(-1.0);
+    mfista_result->looe_m = 0;
+    mfista_result->Hessian_positive = -1;
   }
+
+  /* clear memory */
+  
+  free(yAx);
+}
+
+void show_io_fnames(FILE *fid, char *fname, struct IO_FNAMES *mfista_io)
+{
+  fprintf(fid,"\n\n");
+
+  fprintf(fid,"IO files of %s.\n",fname);
+
+  fprintf(fid,"\n\n");
+  
+  if ( mfista_io->fft == 0){
+    fprintf(fid," input vector file:      %s\n", mfista_io->v_fname);
+    fprintf(fid," input matrix file:      %s\n", mfista_io->A_fname);
+  }
+  else 
+    fprintf(fid," FFTW file:              %s\n", mfista_io->fft_fname);  
+
+  if(mfista_io->in_fname != NULL)
+    fprintf(fid," x was initialized with: %s\n", mfista_io->in_fname);
+
+  if(mfista_io->out_fname != NULL)
+    fprintf(fid," x is saved to:          %s\n", mfista_io->out_fname);
+
+  fprintf(fid,"\n");
 }
 
 void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
@@ -393,13 +453,6 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
   else if (mfista_result->nonneg == 0)
     fprintf(fid," x is a real vector (takes 0, positive, and negative value).\n\n");
 
-  fprintf(fid," input vector file:      %s\n", mfista_result->v_fname);
-  fprintf(fid," input matrix file:      %s\n", mfista_result->A_fname);
-
-
-  if(mfista_result->in_fname != NULL)
-    fprintf(fid," x was initialized with: %s\n", mfista_result->in_fname);
-
   if(mfista_result->lambda_l1 != 0)
     fprintf(fid," Lambda_1:               %e\n", mfista_result->lambda_l1);
 
@@ -417,9 +470,6 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
   fprintf(fid," # of iterations:        %d\n", mfista_result->ITER);
   fprintf(fid," cost:                   %e\n", mfista_result->finalcost);
   fprintf(fid," computaion time[sec]:   %e\n\n", mfista_result->comp_time);
-  
-  fprintf(fid," x is saved to:          %s\n", mfista_result->out_fname);
-  fprintf(fid,"\n");
 
   fprintf(fid," # of nonzero pixels:    %d\n", mfista_result->N_active);
   fprintf(fid," Squared Error (SE):     %e\n", mfista_result->sq_error);
@@ -436,8 +486,10 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
 
   fprintf(fid,"\n");
   
-  if(mfista_result->Hessian_positive ==1)
-    fprintf(fid," LOOE:                   %e\n", mfista_result->looe);
+  if(mfista_result->Hessian_positive ==1){
+    fprintf(fid," LOOE:(mean)             %e\n", mfista_result->looe_m);
+    fprintf(fid," LOOE:(std)              %e\n", mfista_result->looe_std);
+  }
   else if (mfista_result->Hessian_positive ==0)
     fprintf(fid," LOOE:    Could not be computed because Hessian was not positive definite.\n");
   else if (mfista_result->Hessian_positive == -1)
