@@ -202,16 +202,8 @@ int main(int argc, char *argv[]){
 
   /* main loop */
 
-  iter = 0;
-
-  if(nonneg_flag == 0){
-    iter = mfista_L1_TV_core_fft(yf, mask_h, &NN, NX, NY,
-				 lambda_l1, lambda_tv, cinit, xvec, fftw_plan_flag);
-  }
-  else if(nonneg_flag == 1){
-    iter = mfista_L1_TV_core_nonneg_fft(yf, mask_h, &NN, NX, NY,
-					lambda_l1, lambda_tv, cinit, xvec, fftw_plan_flag);
-  }
+  iter = mfista_L1_TV_core_fft(yf, mask_h, &NN, NX, NY,
+			       lambda_l1, lambda_tv, cinit, xvec, fftw_plan_flag, nonneg_flag);
   
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 

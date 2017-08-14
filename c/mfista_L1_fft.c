@@ -198,8 +198,8 @@ int main(int argc, char *argv[]){
 
   /* main loop */
 
-  iter = mfista_L1_core_fft(yf, mask_h, &NN, NX, NY, lambda_l1, cinit,
-			    xvec, fftw_plan_flag, nonneg_flag);
+  iter = mfista_L1_TSV_core_fft(yf, mask_h, &NN, NX, NY, lambda_l1, 0, cinit,
+				xvec, fftw_plan_flag, nonneg_flag);
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 

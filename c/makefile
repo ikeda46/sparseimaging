@@ -11,16 +11,15 @@ CLIBS_FFTW = -lfftw3
 
 targets = mfista_L1 mfista_L1_TV mfista_L1_TSV mfista_imaging_dft mfista_L1_fft mfista_L1_TV_fft mfista_L1_TSV_fft mfista_imaging_fft 
 object_tools = mfista_tools.o looe_lib.o 
-object_l1 = mfista_lib.o
 object_tv = mfista_TV_lib.o
 object_tsv = mfista_TSV_lib.o
-object_dft = mfista_lib.o mfista_TV_lib.o mfista_TSV_lib.o
+object_dft = mfista_TV_lib.o mfista_TSV_lib.o
 object_fft = mfista_TV_lib.o mfista_fft_lib.o
 
 all: $(targets)
 
-mfista_L1: mfista_L1.o $(object_l1) $(object_tools)
-	$(CC) $(CFLAGS) $(object_l1) $(object_tools) $@.o $(CLIBS) -o $@
+mfista_L1: mfista_L1.o $(object_tsv) $(object_tools)
+	$(CC) $(CFLAGS) $(object_tsv) $(object_tools) $@.o $(CLIBS) -o $@
 
 mfista_L1_TV: mfista_L1_TV.o $(object_tv) $(object_tools)
 	$(CC) $(CFLAGS) $(object_tv) $(object_tools) $@.o $(CLIBS) -o $@

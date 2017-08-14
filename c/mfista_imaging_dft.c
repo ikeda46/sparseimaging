@@ -42,22 +42,13 @@ void mfista_imaging_core(double *y, double *A,
 
   /* main loop */
 
-  if( lambda_tv == 0  && lambda_tsv == 0 ){
-    iter = mfista_L1_core(y, A, M, N, lambda_l1, cinit, xout, nonneg_flag);
-  }
-  else if( lambda_tv == 0  && lambda_tsv != 0 ){
+  if( lambda_tv == 0){
     iter = mfista_L1_TSV_core(y, A, M, N, NX, NY,
 			      lambda_l1, lambda_tsv, cinit, xout, nonneg_flag);
   }
   else if( lambda_tv != 0  && lambda_tsv == 0 ){
-    if(nonneg_flag == 0){
-      iter = mfista_L1_TV_core(y, A, M, N, NX, NY,
-			       lambda_l1, lambda_tv, cinit, xout);
-    }
-    else if(nonneg_flag == 1){
-      iter = mfista_L1_TV_core_nonneg(y, A, M, N, NX, NY,
-				      lambda_l1, lambda_tv, cinit, xout);
-    }
+    iter = mfista_L1_TV_core(y, A, M, N, NX, NY,
+			     lambda_l1, lambda_tv, cinit, xout, nonneg_flag);
   }
   else{
     printf("You cannot set both of lambda_TV and lambda_TSV positive.\n");

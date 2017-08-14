@@ -228,165 +228,9 @@ void FGP_nonneg(int *N, int NX, int NY,
 int mfista_L1_TV_core(double *yvec, double *Amat, 
 		      int *M, int *N, int NX, int NY,
 		      double lambda_l1, double lambda_tv, double cinit,
-		      double *xvec)
+		      double *xvec, int nonneg_flag)
 {
-  double *ytmp, *zvec, *xtmp, *xnew, *yAz, *AyAz,
-    *rmat, *smat, *npmat, *nqmat,
-    Qcore, Fval, Qval, c, costtmp, *cost, *pmat, *qmat,
-    mu=1, munew, alpha = 1, gamma=0, tmpa, l1cost, tvcost;
-  int i, iter, inc = 1;
-
-  printf("computing image with MFISTA.\n");
-
-  /* allocate memory space start */ 
-
-  zvec  = alloc_vector(*N);
-  xnew  = alloc_vector(*N);
-  AyAz  = alloc_vector(*N);
-  yAz   = alloc_vector(*M);
-  ytmp  = alloc_vector(*M);
-  xtmp  = alloc_vector(*N);
-
-  pmat = alloc_matrix(NX-1,NY);
-  qmat = alloc_matrix(NX,NY-1);
-
-  npmat = alloc_matrix(NX-1,NY);
-  nqmat = alloc_matrix(NX,NY-1);
-
-  rmat = alloc_matrix(NX-1,NY);
-  smat = alloc_matrix(NX,NY-1);
-
-  cost  = alloc_vector(MAXITER);
-
-  /* initialize xvec */
-  dcopy_(N, xvec, &inc, zvec, &inc);
-
-  c = cinit;
-
-  l1cost = dasum_(N, xvec, &inc);
-  tvcost = TV(NX, NY, xvec);
-
-  costtmp = calc_F_part(M, N, yvec, Amat, xvec, ytmp);
-  costtmp += (lambda_l1*l1cost + lambda_tv*tvcost);
-
-  for(iter = 0; iter < MAXITER; iter++){
-
-    cost[iter] = costtmp;
-
-    if((iter % 100) == 0)
-      printf("%d cost = %f \n",(iter+1), cost[iter]);
-
-    calc_yAz(M, N,  yvec, Amat, zvec, yAz);
-    dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, AyAz, &inc);
-
-    Qcore = ddot_(M, yAz, &inc, yAz, &inc)/2;
-            
-    for( i = 0; i < MAXITER; i++){
-
-      dcopy_(N, AyAz, &inc, xtmp, &inc);
-      tmpa = 1/c;
-      dscal_(N, &tmpa, xtmp, &inc);
-      daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
-
-      FGP_L1(N, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
-	     pmat, qmat, rmat, smat, npmat, nqmat, xnew);
-
-      Fval = calc_F_part(M, N, yvec, Amat, xnew, ytmp);
-      Qval = calc_Q_part(N, xnew, zvec, c, AyAz, xtmp);
-      Qval += Qcore;
-
-      /*    printf("c = %g, F = %g, G = %g\n",c,Fval,Qval);*/
-      
-      if(Fval<=Qval) break;
-
-      c *= ETA;
-    }
-
-    c /= ETA;
-
-    munew = (1+sqrt(1+4*mu*mu))/2;
-
-    tvcost = TV(NX, NY, xnew);
-    l1cost = dasum_(N, xnew, &inc);
-
-    Fval += (lambda_l1*l1cost + lambda_tv*tvcost);
-
-    if(Fval < cost[iter]){
-
-      costtmp = Fval;
-      dcopy_(N, xvec, &inc, zvec, &inc);
-
-      tmpa = (1-mu)/munew;
-      dscal_(N, &tmpa, zvec, &inc);
-
-      tmpa = 1+((mu-1)/munew);
-      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
-	
-      dcopy_(N, xnew, &inc, xvec, &inc);
-	    
-    }	
-    else{
-      dcopy_(N, xvec, &inc, zvec, &inc);
-
-      tmpa = 1-(mu/munew);
-      dscal_(N, &tmpa, zvec, &inc);
-      
-      tmpa = mu/munew;
-      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
-
-      /* another stopping rule */
-      if((iter>1) && (dasum_(N, xvec, &inc) == 0)){
-	printf("x becomes a 0 vector.\n");
-	break;
-      }
-
-    }
-
-    /* stopping rule start */
-     
-    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])<EPS)) break;
-
-    /* stopping rule end */
-
-    mu = munew;
-  }
-  if(iter == MAXITER){
-    printf("%d cost = %f \n",(iter), cost[iter-1]);
-    iter = iter -1;
-  }
-  else
-    printf("%d cost = %f \n",(iter+1), cost[iter]);
-
-  printf("\n");
-
-  /* clear memory */
-
-  free(AyAz);
-
-  free(cost);
-
-  free(npmat);
-  free(nqmat);
-  free(pmat);
-  free(qmat);
-  free(rmat);
-  free(smat);
-
-  free(xnew);
-  free(xtmp);
-  free(yAz);
-  free(ytmp);
-  free(zvec);
-
-  return(iter+1);
-}
-
-int mfista_L1_TV_core_nonneg(double *yvec, double *Amat, 
-			     int *M, int *N, int NX, int NY,
-			     double lambda_l1, double lambda_tv, double cinit,
-			     double *xvec)
-{
-  double *ytmp, *zvec, *xtmp, *xnew, *yAz, *AyAz,
+  double *ytmp, *zvec, *xtmp, *xnew, *yAz, *dfdx,
     *rmat, *smat, *npmat, *nqmat,
     Qcore, Fval, Qval, c, costtmp, *cost, *pmat, *qmat, *ones,
     mu=1, munew, alpha = 1, gamma=0, tmpa, l1cost, tvcost;
@@ -398,13 +242,15 @@ int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
 
   zvec  = alloc_vector(*N);
   xnew  = alloc_vector(*N);
-  AyAz  = alloc_vector(*N);
+  dfdx  = alloc_vector(*N);
   yAz   = alloc_vector(*M);
   ytmp  = alloc_vector(*M);
   xtmp  = alloc_vector(*N);
   ones  = alloc_vector(*N);
 
-  for(i = 0; i < (*N); ++i) ones[i]=1;
+  if( nonneg_flag == 1){
+    for(i = 0; i < (*N); ++i) ones[i]=1;
+  }
 
   pmat = alloc_matrix(NX-1,NY);
   qmat = alloc_matrix(NX,NY-1);
@@ -422,11 +268,13 @@ int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
 
   c = cinit;
 
-  l1cost = dasum_(N, xvec, &inc);
-  tvcost = TV(NX, NY, xvec);
-
   costtmp = calc_F_part(M, N, yvec, Amat, xvec, ytmp);
-  costtmp += (lambda_l1*l1cost + lambda_tv*tvcost);
+
+  l1cost = dasum_(N, xvec, &inc);
+  costtmp += lambda_l1*l1cost;
+    
+  tvcost = TV(NX, NY, xvec);
+  costtmp += lambda_tv*tvcost;
 
   for(iter = 0; iter < MAXITER; iter++){
 
@@ -436,29 +284,36 @@ int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
       printf("%d cost = %f \n",(iter+1), cost[iter]);
 
     calc_yAz(M, N,  yvec, Amat, zvec, yAz);
-    dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, AyAz, &inc);
+    dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, dfdx, &inc);
 
     Qcore =  ddot_(M, yAz, &inc, yAz, &inc)/2;
 
     for( i = 0; i < MAXITER; i++){
 
-      dcopy_(N, ones, &inc, xtmp, &inc);
-      tmpa = -lambda_l1/c;
-      dscal_(N, &tmpa, xtmp, &inc);
-      tmpa = 1/c;
-      daxpy_(N, &tmpa, AyAz, &inc, xtmp, &inc);
-      daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
+      if( nonneg_flag == 1){
+	dcopy_(N, ones, &inc, xtmp, &inc);
+	tmpa = -lambda_l1/c;
+	dscal_(N, &tmpa, xtmp, &inc);
+	tmpa = 1/c;
+	daxpy_(N, &tmpa, dfdx, &inc, xtmp, &inc);
+	daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
 
-      FGP_nonneg(N, NX, NY, xtmp, lambda_tv/c, FGPITER,
-		 pmat, qmat, rmat, smat, npmat, nqmat, xnew);
+	FGP_nonneg(N, NX, NY, xtmp, lambda_tv/c, FGPITER,
+		   pmat, qmat, rmat, smat, npmat, nqmat, xnew);
+      }
+      else{
+	dcopy_(N, dfdx, &inc, xtmp, &inc);
+	tmpa = 1/c;
+	dscal_(N, &tmpa, xtmp, &inc);
+	daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
 
-      l1cost = dasum_(N, xnew, &inc);
-      
+	FGP_L1(N, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
+	       pmat, qmat, rmat, smat, npmat, nqmat, xnew);
+      }
+
       Fval = calc_F_part(M, N, yvec, Amat, xnew, ytmp);
-      Qval = calc_Q_part(N, xnew, zvec, c, AyAz, xtmp);
-
-      Fval += lambda_l1*l1cost;
-      Qval += Qcore+lambda_l1*l1cost;
+      Qval = calc_Q_part(N, xnew, zvec, c, dfdx, xtmp);
+      Qval += Qcore;
       
       if(Fval<=Qval) break;
 
@@ -469,8 +324,10 @@ int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
 
     munew = (1+sqrt(1+4*mu*mu))/2;
 
-    tvcost = TV(NX, NY, xnew);
+    l1cost = dasum_(N, xnew, &inc);
+    Fval += lambda_l1*l1cost;
 
+    tvcost = TV(NX, NY, xnew);
     Fval += lambda_tv*tvcost;
 
     if(Fval < cost[iter]){
@@ -530,7 +387,7 @@ int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,
   free(zvec);
   free(xnew);
 
-  free(AyAz);
+  free(dfdx);
   free(yAz);
 
   free(ones);

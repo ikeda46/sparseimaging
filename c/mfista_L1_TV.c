@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 {
   double *y, *A, *xvec, cinit = CINIT, lambda_l1, lambda_tv, s_t, e_t;
   char init_fname[1024],fname[1024],log_fname[1024];
-  int i, M, N, NX, NY, iter=0, trans_flag = 0, rec_flag = 0, init_flag = 0, log_flag = 0,
+  int i, M, N, NX, NY, iter, trans_flag = 0, rec_flag = 0, init_flag = 0, log_flag = 0,
     nonneg_flag = 0;
   unsigned long tmpdnum, dnum; 
   struct IO_FNAMES mfista_io;
@@ -185,14 +185,8 @@ int main(int argc, char *argv[])
 
   /* main loop */
 
-  if(nonneg_flag == 0){
-    iter = mfista_L1_TV_core(y, A, &M, &N, NX, NY,
-			     lambda_l1, lambda_tv, cinit, xvec);
-  }
-  else if(nonneg_flag == 1){
-    iter = mfista_L1_TV_core_nonneg(y, A, &M, &N, NX, NY,
-				    lambda_l1, lambda_tv, cinit, xvec);
-  }
+  iter = mfista_L1_TV_core(y, A, &M, &N, NX, NY,
+			   lambda_l1, lambda_tv, cinit, xvec, nonneg_flag);
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 

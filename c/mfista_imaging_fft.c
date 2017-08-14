@@ -76,27 +76,15 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 
   iter = 0;
 
-  if( lambda_tv == 0  && lambda_tsv == 0 ){
-    iter = mfista_L1_core_fft(yf, mask_h, &NN, NX, NY,
-			      lambda_l1, cinit, xout,
-			      fftw_plan_flag, nonneg_flag);
-  }
-  else if( lambda_tv == 0  && lambda_tsv != 0 ){
+  if( lambda_tv == 0 ){
     iter = mfista_L1_TSV_core_fft(yf, mask_h, &NN, NX, NY,
 				  lambda_l1, lambda_tsv, cinit, xout,
 				  fftw_plan_flag, nonneg_flag);
   }
   else if( lambda_tv != 0  && lambda_tsv == 0 ){
-    if(nonneg_flag == 0){
-      iter = mfista_L1_TV_core_fft(yf, mask_h, &NN, NX, NY,
-				   lambda_l1, lambda_tv, cinit, xout,
-				   fftw_plan_flag);
-    }
-    else if(nonneg_flag == 1){
-      iter = mfista_L1_TV_core_nonneg_fft(yf, mask_h, &NN, NX, NY,
-					  lambda_l1, lambda_tv, cinit, xout,
-					  fftw_plan_flag);
-    }
+    iter = mfista_L1_TV_core_fft(yf, mask_h, &NN, NX, NY,
+				 lambda_l1, lambda_tv, cinit, xout,
+				 fftw_plan_flag, nonneg_flag);
   }
   else{
     printf("You cannot set both of lambda_TV and lambda_TSV positive.\n");

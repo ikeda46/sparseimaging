@@ -143,15 +143,15 @@ extern void FGP_nonneg(int *N, int NX, int NY,
 		       double *pmat, double *qmat, double *rmat, double *smat, 
 		       double *npmat, double *nqmat, double *xvec);
 
-extern int mfista_L1_TV_core(double *yvec, double *Amat, 
+extern int mfista_L1_TV_core(double *yvec, double *Amat,
 			     int *M, int *N, int NX, int NY,
 			     double lambda, double lambda_tv, double cinit,
-			     double *xvec);
+			     double *xvec, int nonneg_flag);
 
-extern int mfista_L1_TV_core_nonneg(double *yvec, double *Amat, 
-				    int *M, int *N, int NX, int NY,
-				    double lambda, double lambda_tv, double cinit,
-				    double *xvec);
+/* extern int mfista_L1_TV_core_nonneg(double *yvec, double *Amat,  */
+/* 				    int *M, int *N, int NX, int NY, */
+/* 				    double lambda, double lambda_tv, double cinit, */
+/* 				    double *xvec); */
 
 /* subroutines for mfista_L1_TSV_nonneg */
 
@@ -162,21 +162,10 @@ extern int mfista_L1_TSV_core(double *yvec, double *Amat,
 
 /* subroutines for mfista_L1_TSV_fftw */
 
-extern int mfista_L1_core_fft(doublecomplex *yf, double *mask_h,
-			      int *N, int NX, int NY,
-			      double lambda_l1, double cinit,
-			      double *xvec,
-			      unsigned int fftw_plan_flag, int nonneg_flag);
-
 extern int mfista_L1_TV_core_fft(doublecomplex *yf, double *mask_h,
 				 int *N, int NX, int NY,
 				 double lambda_l1, double lambda_tv, double cinit,
-				 double *xvec, unsigned int fftw_plan_flag);
-
-extern int mfista_L1_TV_core_nonneg_fft(doublecomplex *yf, double *mask_h,
-					int *N, int NX, int NY,
-					double lambda_l1, double lambda_tv, double cinit,
-					double *xvec, unsigned int fftw_plan_flag);
+				 double *xvec, unsigned int fftw_plan_flag, int nonneg_flag);
 
 extern int mfista_L1_TSV_core_fft(doublecomplex *yf, double *mask_h,
 				  int *N, int NX, int NY,

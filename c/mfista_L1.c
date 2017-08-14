@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
 
   /* main loop */
 
-  iter = mfista_L1_core(y, A, &M, &N, lambda_l1, cinit, xvec, nonneg_flag);
+  iter = mfista_L1_TSV_core(y, A, &M, &N, 0, 0, lambda_l1, 0, cinit, xvec, nonneg_flag);
 
   clock_gettime(CLOCK_MONOTONIC, &time_spec2);
 

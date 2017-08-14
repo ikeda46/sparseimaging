@@ -22,7 +22,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */ 
-#include "mfista.h" 
+#include "mfista.h"
 
 double calc_F_TSV_part(int *M, int NX, int NY, double *yAx, double *xvec, double lambda_tsv)
 {
@@ -33,6 +33,16 @@ double calc_F_TSV_part(int *M, int NX, int NY, double *yAx, double *xvec, double
   term2 = TSV(NX, NY, xvec);
 
   return(term1/2+lambda_tsv*term2);
+}
+
+void dL_dx(int *M, int *N, double *yAx, double *Amatrix, double *dfdx)
+{
+  int inc = 1;
+  double beta = 1, gamma = 0;
+
+  /* A' (y - A x) */
+  dgemv_("T", M, N, &beta, Amatrix, M, yAx, &inc, &gamma, dfdx, &inc);
+
 }
 
 void dF_dx(int *M, int *N, int NX, int NY,
@@ -90,7 +100,11 @@ int mfista_L1_TSV_core(double *yvec, double *Amat,
   c = cinit;
 
   calc_yAz(M, N, yvec, Amat, xvec, ytmp);
-  costtmp = calc_F_TSV_part(M, NX, NY, ytmp, xvec, lambda_tsv);
+
+  if( lambda_tsv > 0)
+    costtmp = calc_F_TSV_part(M, NX, NY, ytmp, xvec, lambda_tsv);
+  else
+    costtmp = ddot_(M, ytmp, &inc, ytmp, &inc)/2;
   
   l1cost = dasum_(N, xvec, &inc);
   costtmp += lambda_l1*l1cost;
@@ -104,9 +118,14 @@ int mfista_L1_TSV_core(double *yvec, double *Amat,
 
     calc_yAz(M, N,  yvec, Amat, zvec, ytmp);
 
-    dF_dx(M, N, NX, NY, ytmp, Amat, zvec, lambda_tsv, dfdx);
-
-    Qcore = calc_F_TSV_part(M, NX, NY, ytmp, zvec, lambda_tsv);
+    if(lambda_tsv > 0){
+      dF_dx(M, N, NX, NY, ytmp, Amat, zvec, lambda_tsv, dfdx);
+      Qcore = calc_F_TSV_part(M, NX, NY, ytmp, zvec, lambda_tsv);
+    }
+    else{
+      dL_dx(M, N, ytmp, Amat, dfdx);
+      Qcore = ddot_(M, ytmp, &inc, ytmp, &inc)/2;
+    }
 
     for( i = 0; i < MAXITER; i++){
       dcopy_(N, dfdx, &inc, xtmp, &inc);
@@ -116,9 +135,16 @@ int mfista_L1_TSV_core(double *yvec, double *Amat,
       soft_th(xtmp, *N, lambda_l1/c, xnew);
 
       calc_yAz(M, N, yvec, Amat, xnew, ytmp);
-      Fval = calc_F_TSV_part(M, NX, NY, ytmp, xnew, lambda_tsv);
 
-      Qval = calc_Q_part(N, xnew, zvec, c, dfdx, xtmp);
+      if(lambda_tsv > 0){
+	Fval = calc_F_TSV_part(M, NX, NY, ytmp, xnew, lambda_tsv);
+	Qval = calc_Q_part(N, xnew, zvec, c, dfdx, xtmp);
+      }
+      else{
+	Fval = ddot_(M, ytmp, &inc, ytmp, &inc)/2;
+	Qval = calc_Q_part(N, xnew, zvec, c, dfdx, xtmp);
+      }
+
       Qval += Qcore;
 
       if(Fval<=Qval) break;
