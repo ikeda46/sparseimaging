@@ -202,3 +202,4 @@ extern void show_io_fnames(FILE *fid, char *fname, struct IO_FNAMES *mfista_io);
 
 extern void show_result(FILE *fid, char *fname, struct RESULT *mfista_result);
 
+extern void get_current_time(struct timespec *t);
