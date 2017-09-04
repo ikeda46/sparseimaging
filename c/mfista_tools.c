@@ -25,6 +25,10 @@
 
 #include "mfista.h"
 
+#ifdef __APPLE__
+#include <sys/time.h>
+#endif
+
 /* memory allocation of matrix and vectors */
 
 int *alloc_int_vector(int length)
@@ -497,4 +501,22 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
 
   fprintf(fid,"\n");
 
+}
+
+/* utility for time measurement */
+void get_current_time(struct timespec *t) {
+#ifdef __APPLE__
+  struct timeval tv;
+  struct timezone tz;
+  int status = gettimeofday(&tv, &tz);
+  if (status == 0) {
+    t->tv_sec = tv.tv_sec;
+    t->tv_nsec = tv.tv_usec * 1000; /* microsec -> nanosec */
+  } else {
+    t->tv_sec = 0.0;
+    t->tv_nsec = 0.0;
+  }
+#else
+  clock_gettime(CLOCK_MONOTONIC, t);
+#endif
 }

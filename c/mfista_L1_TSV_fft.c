@@ -197,7 +197,7 @@ int main(int argc, char *argv[]){
 
   /* preparation end */
 
-  clock_gettime(CLOCK_MONOTONIC, &time_spec1);
+  get_current_time(&time_spec1);
 
   /* main loop */
 
@@ -205,7 +205,7 @@ int main(int argc, char *argv[]){
 				lambda_l1, lambda_tsv, cinit, xvec,
 				fftw_plan_flag, nonneg_flag);
 
-  clock_gettime(CLOCK_MONOTONIC, &time_spec2);
+  get_current_time(&time_spec2);
 
   write_X_vector(argv[5], NN, xvec);
 

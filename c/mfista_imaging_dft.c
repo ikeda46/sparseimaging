@@ -38,7 +38,7 @@ void mfista_imaging_core(double *y, double *A,
 
   dcopy_(N, xinit, &inc, xout, &inc);
   
-  clock_gettime(CLOCK_MONOTONIC, &time_spec1);
+  get_current_time(&time_spec1);
 
   /* main loop */
 
@@ -55,7 +55,7 @@ void mfista_imaging_core(double *y, double *A,
     return;
   }
     
-  clock_gettime(CLOCK_MONOTONIC, &time_spec2);
+  get_current_time(&time_spec2);
 
   /* main loop end */
 

@@ -6,7 +6,7 @@ BINDIR=../../bin
 
 CC=gcc
 CFLAGS=-O2
-CLIBS= -llapack -lopenblas -lm -lpthread
+CLIBS= -llapack -lopenblas -lm -lrt -lpthread
 CLIBS_FFTW = -lfftw3
 
 targets = mfista_L1 mfista_L1_TV mfista_L1_TSV mfista_imaging_dft mfista_L1_fft mfista_L1_TV_fft mfista_L1_TSV_fft mfista_imaging_fft 

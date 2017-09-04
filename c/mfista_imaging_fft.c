@@ -70,7 +70,7 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
   
   /* preparation end */
 
-  clock_gettime(CLOCK_MONOTONIC, &time_spec1);
+  get_current_time(&time_spec1);
 
   /* main loop */
 
@@ -91,7 +91,7 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
     return;
   }
   
-  clock_gettime(CLOCK_MONOTONIC, &time_spec2);
+  get_current_time(&time_spec2);
 
   s_t = (double)time_spec1.tv_sec + (10e-10)*(double)time_spec1.tv_nsec;
   e_t = (double)time_spec2.tv_sec + (10e-10)*(double)time_spec2.tv_nsec;
