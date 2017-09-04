@@ -52,10 +52,10 @@ mfista_imaging_fft: mfista_imaging_fft.o $(object_fft) $(object_tools)
 libraries: libmfista_dft libmfista_fft
 
 libmfista_dft: $(object_tools2) $(object_dft2)
-	$(CC) $(CFLAGS) -shared $(object_dft) $(object_tools) -o $@.so $(CLIBS) $(CLIBS_FFTW)
+	$(CC) $(CFLAGS) -shared $(object_dft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW)
 
 libmfista_fft: $(object_tools2) $(object_fft2)
-	$(CC) $(CFLAGS) -shared $(object_fft) $(object_tools) -o $@.so $(CLIBS) $(CLIBS_FFTW)
+	$(CC) $(CFLAGS) -shared $(object_fft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW)
 
 .c.o:
 	$(CC) -c -O2 -Wall $(CFLAGS) -o $@ $<
