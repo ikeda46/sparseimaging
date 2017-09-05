@@ -74,7 +74,11 @@ int main(int argc, char *argv[]){
   struct IO_FNAMES mfista_io;
   struct RESULT    mfista_result;
   FILE *fftw_fp, *log_fid;
+	
+  /* check the number of variables first. */
 
+  if (argc<7) usage(argv[0]);
+	
   /* read parameters */
 
   lambda_l1 = atof(argv[2]);
@@ -98,8 +102,6 @@ int main(int argc, char *argv[]){
   printf("\n");
 
   /* options */
-
-  if (argc<7) usage(argv[0]);
 
   for(i=7; i<argc ; i++){
     if(strcmp(argv[i],"-log") == 0){
