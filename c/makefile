@@ -1,3 +1,6 @@
+# suffixes
+.SUFFIXES: .o2
+
 # INSTALLDIR
 PYTHONLIBDIR=../../pythonlib
 LIBDIR=../../lib
@@ -13,8 +16,12 @@ targets = mfista_L1 mfista_L1_TV mfista_L1_TSV mfista_imaging_dft mfista_L1_fft 
 object_tools = mfista_tools.o looe_lib.o 
 object_tv = mfista_TV_lib.o
 object_tsv = mfista_TSV_lib.o
-object_dft = mfista_TV_lib.o mfista_TSV_lib.o
+object_dft = mfista_TV_lib.o mfista_TSV_lib.o mfista_dft_lib.o
 object_fft = mfista_TV_lib.o mfista_fft_lib.o
+
+object_tools2 = mfista_tools.o2 looe_lib.o2
+object_dft2 = mfista_TV_lib.o2 mfista_TSV_lib.o2 mfista_dft_lib.o2
+object_fft2 = mfista_TV_lib.o2 mfista_fft_lib.o2
 
 all: $(targets)
 
@@ -42,12 +49,22 @@ mfista_L1_TSV_fft: mfista_L1_TSV_fft.o $(object_fft) $(object_tools)
 mfista_imaging_fft: mfista_imaging_fft.o $(object_fft) $(object_tools)
 	$(CC) $(CFLAGS) $(object_fft) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW) -o $@
 
+libraries: libmfista_dft libmfista_fft
+
+libmfista_dft: $(object_tools2) $(object_dft2)
+	$(CC) $(CFLAGS) -shared $(object_dft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW)
+
+libmfista_fft: $(object_tools2) $(object_fft2)
+	$(CC) $(CFLAGS) -shared $(object_fft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW)
 
 .c.o:
 	$(CC) -c -O2 -Wall $(CFLAGS) -o $@ $<
 
+.c.o2:
+	$(CC) -c -O2 -Wall -fPIC $(CFLAGS) -o $@ $<
+
 clean:
-	rm -f $(targets) *.o
+	rm -f $(targets) *.o *.o2 *.so
 
 install: all
 	mkdir -p $(BINDIR)

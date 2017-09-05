@@ -587,3 +587,89 @@ void calc_result_fft(doublecomplex *yf, double *mask_h,
 
   fftw_free(yAx_fh);
 }
+
+void mfista_imaging_core_fft(int *u_idx, int *v_idx,
+           double *y_r, double *y_i, double *noise_stdev,
+           int M, int NX, int NY,
+           double lambda_l1, double lambda_tv, double lambda_tsv,
+           double cinit, double *xinit, double *xout,
+           int nonneg_flag, unsigned int fftw_plan_flag,
+           struct RESULT *mfista_result)
+{
+  int NN, NY_h, i, j, iter, inc = 1;
+  double *mask_h, *mask, s_t, e_t;
+  doublecomplex *yf;
+  struct timespec time_spec1, time_spec2;
+
+  /* set parameters */
+
+  NN = NX*NY;
+  NY_h = (int)floor(((double)NY)/2)+1;
+
+  /* allocate vectors */
+
+  mask_h = alloc_vector(NX*NY_h);
+  mask   = alloc_vector(NX*NY);
+  yf     = (doublecomplex*) malloc(NX*NY*sizeof(doublecomplex));
+
+  for(i=0;i<NX;++i) for(j=0;j<NY;++j){
+      yf[NY*i+j].r = 0.0;
+      yf[NY*i+j].i = 0.0;
+    }
+
+  for(i=0;i<M;++i){
+    yf[NY*(u_idx[i]) + (v_idx[i])].r = y_r[i]/noise_stdev[i];
+    yf[NY*(u_idx[i]) + (v_idx[i])].i = y_i[i]/noise_stdev[i];
+    mask[NY*(u_idx[i]) + (v_idx[i])]  = 1/noise_stdev[i];
+  }
+
+  for(i=0;i<NX;++i){
+    for(j=0;j<NY_h;++j){
+      mask_h[NY_h*i+j] = mask[NY*i+j];
+    }
+  }
+
+  dcopy_(&NN, xinit, &inc, xout, &inc);
+
+  /* preparation end */
+
+  get_current_time(&time_spec1);
+
+  /* main loop */
+
+  iter = 0;
+
+  if( lambda_tv == 0 ){
+    iter = mfista_L1_TSV_core_fft(yf, mask_h, &NN, NX, NY,
+          lambda_l1, lambda_tsv, cinit, xout,
+          fftw_plan_flag, nonneg_flag);
+  }
+  else if( lambda_tv != 0  && lambda_tsv == 0 ){
+    iter = mfista_L1_TV_core_fft(yf, mask_h, &NN, NX, NY,
+         lambda_l1, lambda_tv, cinit, xout,
+         fftw_plan_flag, nonneg_flag);
+  }
+  else{
+    printf("You cannot set both of lambda_TV and lambda_TSV positive.\n");
+    return;
+  }
+
+  get_current_time(&time_spec2);
+
+  s_t = (double)time_spec1.tv_sec + (10e-10)*(double)time_spec1.tv_nsec;
+  e_t = (double)time_spec2.tv_sec + (10e-10)*(double)time_spec2.tv_nsec;
+
+  mfista_result->comp_time = e_t-s_t;
+  mfista_result->ITER = iter;
+  mfista_result->nonneg = nonneg_flag;
+
+  calc_result_fft(yf, mask_h, M, &NN, NX, NY,
+      lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
+
+  free(mask_h);
+  free(mask);
+  free(yf);
+
+  return;
+}
+

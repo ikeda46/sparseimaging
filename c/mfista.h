@@ -173,6 +173,23 @@ extern int mfista_L1_TSV_core_fft(doublecomplex *yf, double *mask_h,
 				  double *xvec,
 				  unsigned int fftw_plan_flag, int nonneg_flag);
 
+/* for mfista_imaging_dft */
+extern void mfista_imaging_core(double *y, double *A,
+       int *M, int *N, int NX, int NY,
+       double lambda_l1, double lambda_tv, double lambda_tsv,
+       double cinit, double *xinit, double *xout,
+       int nonneg_flag, int looe_flag,
+       struct RESULT *mfista_result);
+
+/* for mfista_imaging_fft */
+extern void mfista_imaging_core_fft(int *u_idx, int *v_idx,
+           double *y_r, double *y_i, double *noise_stdev,
+           int M, int NX, int NY,
+           double lambda_l1, double lambda_tv, double lambda_tsv,
+           double cinit, double *xinit, double *xout,
+           int nonneg_flag, unsigned int fftw_plan_flag,
+           struct RESULT *mfista_result);
+
 /* looe */
 
 extern double compute_LOOE_L1(int *M, int *N, double lambda_l1,
