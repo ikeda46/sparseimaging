@@ -66,7 +66,7 @@ int main(int argc, char *argv[]){
   double *y_r, *y_i, *noise_stdev, *xvec, 
     *mask_h, *mask, cinit = CINIT, lambda_l1, lambda_tsv, s_t, e_t;
   
-  doublecomplex *yf;
+  fftw_complex *yf;
   struct IO_FNAMES mfista_io;
   struct RESULT mfista_result;
   struct timespec time_spec1, time_spec2;
@@ -172,16 +172,14 @@ int main(int argc, char *argv[]){
   mask_h = alloc_vector(NX*NY_h);
   mask   = alloc_vector(NX*NY);
 
-  yf     = (doublecomplex*) malloc(NX*NY*sizeof(doublecomplex));
+  yf     = (fftw_complex*) fftw_malloc(NX*NY*sizeof(fftw_complex));
 
   for(i=0;i<NX;++i) for(j=0;j<NY;++j){
-      yf[NY*i+j].r = 0.0;
-      yf[NY*i+j].i = 0.0;
+      yf[NY*i+j] = 0.0 + 0.0*I;
     }
 
   for(i=0;i<M;++i){
-    yf[NY*(u_idx[i]) + (v_idx[i])].r = y_r[i]/noise_stdev[i];
-    yf[NY*(u_idx[i]) + (v_idx[i])].i = y_i[i]/noise_stdev[i];
+    yf[NY*(u_idx[i]) + (v_idx[i])] = (y_r[i] + y_i[i]*I)/noise_stdev[i];
     mask[NY*(u_idx[i]) + (v_idx[i])]  = 1/noise_stdev[i];
   }
 
@@ -216,7 +214,7 @@ int main(int argc, char *argv[]){
   mfista_result.comp_time = e_t-s_t;
   mfista_result.nonneg = nonneg_flag;
 
-  calc_result_fft(yf, mask_h, M, &NN, NX, NY,
+  calc_result_fft(yf, mask_h, M, NX, NY,
 		  lambda_l1, 0, lambda_tsv, xvec, &mfista_result);
   
   /* main end */
@@ -247,8 +245,9 @@ int main(int argc, char *argv[]){
 
   free(mask_h);
   free(noise_stdev);
-  free(yf);
   free(xvec);
- 
+
+  fftw_free(yf);
+
   return 0;
 }

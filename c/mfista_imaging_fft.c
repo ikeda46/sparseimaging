@@ -74,7 +74,7 @@ int main(int argc, char *argv[]){
   struct IO_FNAMES mfista_io;
   struct RESULT    mfista_result;
   FILE *fftw_fp, *log_fid;
-	
+
   /* check the number of variables first. */
 
   if (argc<7) usage(argv[0]);
