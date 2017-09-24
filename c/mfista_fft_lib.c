@@ -58,17 +58,42 @@ void fft_full2half(int NX, int NY, fftw_complex *FT, fftw_complex *FT_h)
 
 }
 
+void full2half(int NX, int NY, double *mk, double *mk_h)
+{
+  int i, j, NY_h;
+
+  NY_h = (int)floor(((double)NY)/2)+1;
+
+  for(i=0; i<NX; ++i) for(j=0; j<NY_h; ++j) mk_h[NY_h*i + j] = mk[NY*i + j];
+
+}
+
 void idx2mat(int M, int NX, int NY,
 	     int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
-	     fftw_complex *yf_h, double *mask_h)
+	     fftw_complex *yf, double *mk)
 {
-  int NY_h, i, j;
+  int i, j;
+
+  /* main */
+  
+  for(i=0; i<NX; ++i) for(j=0; j<NY; ++j){
+      mk[NY*i + j] = 0.0;
+      yf[NY*i + j] = 0.0 + 0.0*I;
+    }
+
+  for(i=0; i<M; ++i){
+    mk[NY*(u_idx[i]) + (v_idx[i])] = 1/noise_stdev[i];
+    yf[NY*(u_idx[i]) + (v_idx[i])] = (y_r[i] + y_i[i]*I)/noise_stdev[i];
+  }
+
+}
+
+void idx2mat_h(int M, int NX, int NY,
+	       int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+	       fftw_complex *yf_h, double *mask_h)
+{
   double *mk;
   fftw_complex *yf;
-
-  /* set parameters */
-  
-  NY_h = (int)floor(((double)NY)/2) + 1;
 
   /* allocate vectors */
 
@@ -76,16 +101,10 @@ void idx2mat(int M, int NX, int NY,
   yf = (fftw_complex*)  fftw_malloc(NX*NY*sizeof(fftw_complex));
 
   /* main */
+
+  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf, mk);
   
-  for(i=0; i<NX; ++i) for(j=0; j<NY; ++j) yf[NY*i + j] = 0.0 + 0.0*I;
-
-  for(i=0; i<M; ++i){
-    yf[NY*(u_idx[i]) + (v_idx[i])] = (y_r[i] + y_i[i]*I)/noise_stdev[i];
-    mk[NY*(u_idx[i]) + (v_idx[i])] = 1/noise_stdev[i];
-  }
-
-  for(i=0; i<NX; ++i) for(j=0; j<NY_h; ++j) mask_h[NY_h*i + j] = mk[NY*i + j];
-
+  full2half(NX, NY, mk, mask_h);
   fft_full2half(NX, NY, yf, yf_h);
 
   /* free vectors */
@@ -166,8 +185,8 @@ void dF_dx_fft(int *N, int NX, int NY,
   dcopy_(N, x4f, &inc, dFdx, &inc);
 }
 
-int mfista_L1_TV_core_fft(int M, int NX, int NY,
-			  int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+int mfista_L1_TV_core_fft(int NX, int NY,
+			  fftw_complex *yf, double *mask,
 			  double lambda_l1, double lambda_tv,
 			  double cinit, double *xinit, double *xout,
 			  int nonneg_flag, unsigned int fftw_plan_flag)
@@ -217,7 +236,8 @@ int mfista_L1_TV_core_fft(int M, int NX, int NY,
 
   /* preparation for fftw */
 
-  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf_h, mask_h);
+  full2half(NX, NY, mask, mask_h);
+  fft_full2half(NX, NY, yf, yf_h);
 
   fftwplan  = fftw_plan_dft_r2c_2d( NX, NY, x4f, yAx_fh, fftw_plan_flag);
   ifftwplan = fftw_plan_dft_c2r_2d( NX, NY, yAx_fh, x4f, fftw_plan_flag);
@@ -370,8 +390,8 @@ int mfista_L1_TV_core_fft(int M, int NX, int NY,
 
 /* TSV */
 
-int mfista_L1_TSV_core_fft(int M, int NX, int NY,
-			   int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+int mfista_L1_TSV_core_fft(int NX, int NY,
+			   fftw_complex *yf, double *mask,
 			   double lambda_l1, double lambda_tsv,
 			   double cinit, double *xinit, double *xout,
 			   int nonneg_flag, unsigned int fftw_plan_flag)
@@ -409,7 +429,8 @@ int mfista_L1_TSV_core_fft(int M, int NX, int NY,
 
   /* preparation for fftw */
 
-  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf_h, mask_h);
+  full2half(NX, NY, mask, mask_h);
+  fft_full2half(NX, NY, yf, yf_h);
 
   fftwplan  = fftw_plan_dft_r2c_2d( NX, NY, x4f, yAx_fh, fftw_plan_flag);
   ifftwplan = fftw_plan_dft_c2r_2d( NX, NY, yAx_fh, x4f, fftw_plan_flag);
@@ -554,7 +575,7 @@ int mfista_L1_TSV_core_fft(int M, int NX, int NY,
 }
 
 void calc_result_fft(int M, int NX, int NY,
-		     int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+		     fftw_complex *yf, double *mask,
 		     double lambda_l1, double lambda_tv, double lambda_tsv, 
 		     double *xvec,
 		     struct RESULT *mfista_result)
@@ -577,7 +598,8 @@ void calc_result_fft(int M, int NX, int NY,
 
   /* preparation for fftw */
 
-  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf_h, mask_h);
+  full2half(NX, NY, mask, mask_h);
+  fft_full2half(NX, NY, yf, yf_h);
 
   fftwplan = fftw_plan_dft_r2c_2d( NX, NY, x4f, yAx_fh, FFTW_ESTIMATE);
 
@@ -648,19 +670,23 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 			     struct RESULT *mfista_result)
 {
   int iter = 0;
-  double s_t, e_t;
+  double *mask, s_t, e_t;
   struct timespec time_spec1, time_spec2;
+  fftw_complex *yf;
+
+  yf   = (fftw_complex*) fftw_malloc(NX*NY*sizeof(fftw_complex));
+  mask = alloc_vector(NX*NY);
+
+  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf, mask);
 
   get_current_time(&time_spec1);
 
   if( lambda_tv == 0 ){
-    iter = mfista_L1_TSV_core_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, 
-				  lambda_l1, lambda_tsv, cinit, xinit, xout,
+    iter = mfista_L1_TSV_core_fft(NX, NY, yf, mask, lambda_l1, lambda_tsv, cinit, xinit, xout,
 				  nonneg_flag, fftw_plan_flag);
   }
   else if( lambda_tv != 0  && lambda_tsv == 0 ){
-    iter = mfista_L1_TV_core_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, 
-				 lambda_l1, lambda_tv, cinit, xinit, xout,
+    iter = mfista_L1_TV_core_fft(NX, NY, yf, mask, lambda_l1, lambda_tv, cinit, xinit, xout,
 				 nonneg_flag, fftw_plan_flag);
   }
   else{
@@ -677,7 +703,9 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
   mfista_result->ITER      = iter;
   mfista_result->nonneg    = nonneg_flag;
 
-  calc_result_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev,
-		  lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
+  calc_result_fft(M, NX, NY, yf, mask, lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
+
+  fftw_free(yf);
+  free(mask);
 }
 

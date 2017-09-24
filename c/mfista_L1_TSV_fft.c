@@ -63,8 +63,10 @@ int main(int argc, char *argv[]){
     init_flag = 0, log_flag = 0, nonneg_flag = 0;
 
   char init_fname[1024],fftw_fname[1024],log_fname[1024];
-  double *y_r, *y_i, *noise_stdev, *xinit, *xout,
+  double *y_r, *y_i, *noise_stdev, *xinit, *xout, *mask,
     cinit = CINIT, lambda_l1, lambda_tsv, s_t, e_t;
+
+  fftw_complex *yf;
 
   struct IO_FNAMES mfista_io;
   struct RESULT mfista_result;
@@ -135,6 +137,8 @@ int main(int argc, char *argv[]){
 
   xinit = alloc_vector(NN);
   xout  = alloc_vector(NN);
+  yf   = (fftw_complex*) fftw_malloc(NN*sizeof(fftw_complex));
+  mask = alloc_vector(NN);
 
   if (init_flag ==1){ 
 
@@ -167,14 +171,15 @@ int main(int argc, char *argv[]){
 
   printf("\n");
 
+  idx2mat(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev, yf, mask);
+
   /* preparation end */
 
   get_current_time(&time_spec1);
 
   /* main loop */
 
-  iter = mfista_L1_TSV_core_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev,
-				lambda_l1, lambda_tsv, cinit, xinit, xout,
+  iter = mfista_L1_TSV_core_fft(NX, NY, yf, mask, lambda_l1, lambda_tsv, cinit, xinit, xout,
 				nonneg_flag, fftw_plan_flag);
 
   get_current_time(&time_spec2);
@@ -188,8 +193,7 @@ int main(int argc, char *argv[]){
   mfista_result.comp_time = e_t-s_t;
   mfista_result.nonneg = nonneg_flag;
 
-  calc_result_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev,
-		  lambda_l1, 0, lambda_tsv, xout, &mfista_result);
+  calc_result_fft(M, NX, NY, yf, mask, lambda_l1, 0, lambda_tsv, xout, &mfista_result);
 
   /* main end */
 
@@ -226,6 +230,9 @@ int main(int argc, char *argv[]){
 
   free(xinit);
   free(xout);
+
+  fftw_free(yf);
+  free(mask);
 
   return 0;
 }

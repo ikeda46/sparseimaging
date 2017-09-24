@@ -155,14 +155,17 @@ extern int mfista_L1_TSV_core(double *yvec, double *Amat,
 
 /* subroutines for mfista_L1_TSV_fftw */
 
-extern int mfista_L1_TV_core_fft(int M, int NX, int NY,
-				 int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+extern void idx2mat(int M, int NX, int NY,
+		    int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+		    fftw_complex *yf, double *mk);
+
+
+extern int mfista_L1_TV_core_fft(int NX, int NY, fftw_complex *yf, double *mask,
 				 double lambda_l1, double lambda_tv,
 				 double cinit, double *xinit, double *xout,
 				 int nonneg_flag, unsigned int fftw_plan_flag);
 
-extern int mfista_L1_TSV_core_fft(int M, int NX, int NY,
-				  int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+extern int mfista_L1_TSV_core_fft(int NX, int NY, fftw_complex *yf, double *mask,
 				  double lambda_l1, double lambda_tsv,
 				  double cinit, double *xinit, double *xout,
 				  int nonneg_flag, unsigned int fftw_plan_flag);
@@ -177,6 +180,7 @@ extern void mfista_imaging_core(double *y, double *A,
 				struct RESULT *mfista_result);
 
 /* for mfista_imaging_fft */
+
 extern void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 				    double *y_r, double *y_i, double *noise_stdev,
 				    int M, int NX, int NY,
@@ -205,7 +209,7 @@ extern void calc_result(double *yvec, double *Amat,
 			struct RESULT *mfista_result);
 
 extern void calc_result_fft(int M, int NX, int NY,
-			    int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
+			    fftw_complex *yf, double *mask,
 			    double lambda_l1, double lambda_tv, double lambda_tsv,
 			    double *xvec,
 			    struct RESULT *mfista_result);
