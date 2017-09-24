@@ -173,7 +173,7 @@ int main(int argc, char *argv[]){
   else{
     clear_matrix(xinit, NN, 1);
   }
-  
+
   mfista_imaging_core_fft(u_idx, v_idx, y_r, y_i, noise_stdev,
 			  M, NX, NY, lambda_l1, lambda_tv, lambda_tsv, cinit,
 			  xinit, xvec, nonneg_flag, fftw_plan_flag,

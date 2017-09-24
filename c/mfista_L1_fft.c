@@ -49,7 +49,7 @@ void usage(char *s)
   printf(" c is a parameter used for stepsize. Larger the algorithm is stable. \n");
   printf(" but too large c makes convergence slow. Around 50000 is fine.\n\n");
 
-  printf(" and writeh x to <X out file>\n\n");
+  printf(" and write x to <X out file>\n\n");
 
   exit(1);
 }
@@ -57,15 +57,14 @@ void usage(char *s)
 int main(int argc, char *argv[]){
 
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
- 
-  int M, NN, NX, NY, NY_h, dnum, i, j, iter, *u_idx, *v_idx,
+
+  int M, NN, NX, NY, dnum, i, iter, *u_idx, *v_idx,
     init_flag = 0, log_flag = 0, nonneg_flag = 0;
 
   char init_fname[1024],fftw_fname[1024],log_fname[1024];
-  double *y_r, *y_i, *noise_stdev, *xvec, 
-    *mask_h, *mask, cinit = CINIT, lambda_l1, s_t, e_t;
-  
-  fftw_complex *yf; 
+  double *y_r, *y_i, *noise_stdev, *xinit, *xout,
+    cinit = CINIT, lambda_l1, s_t, e_t;
+
   struct IO_FNAMES mfista_io;
   struct RESULT mfista_result;
   struct timespec time_spec1, time_spec2;
@@ -97,7 +96,7 @@ int main(int argc, char *argv[]){
   /* read fftw_data */
 
   strcpy(fftw_fname,argv[1]);
-  
+
   fftw_fp = fopenr(fftw_fname);
 
   if (fscanf(fftw_fp, "M  = %d\n", &M)  !=1){exit(0);}
@@ -116,7 +115,7 @@ int main(int argc, char *argv[]){
   y_r    = alloc_vector(M);
   y_i    = alloc_vector(M);
   noise_stdev = alloc_vector(M);
-  
+
   for(i = 0;i<M;++i){
     if(fscanf(fftw_fp, "%d, %d, %lf, %lf, %lf\n",
 	      u_idx+i,v_idx+i,y_r+i,y_i+i,noise_stdev+i)!=5){
@@ -127,23 +126,25 @@ int main(int argc, char *argv[]){
 
   fclose(fftw_fp);
 
-
-  /* initialize xvec */
+  /* initialize xout */
 
   NN = NX*NY;
 
-  xvec = alloc_vector(NN);
+  /* allocate memory */
+
+  xinit = alloc_vector(NN);
+  xout  = alloc_vector(NN);
 
   if (init_flag ==1){ 
 
     printf("Initializing x with %s.\n",init_fname);
-    dnum = read_V_vector(init_fname, NN, xvec);
+    dnum = read_V_vector(init_fname, NN, xinit);
 
     if(dnum != NN)
       printf("Number of read data is shorter than expected.\n");
   }
   else{
-    clear_matrix(xvec, NN, 1);
+    clear_matrix(xinit, NN, 1);
   }
 
   /* read parameters */
@@ -162,46 +163,19 @@ int main(int argc, char *argv[]){
 
   printf("\n");
 
-  /* set parameters */
-
-  NY_h = (int)floor(NY/2)+1;
-
-  mask_h = alloc_vector(NX*NY_h);
-  mask   = alloc_vector(NX*NY);
-
-  yf     = (fftw_complex*) fftw_malloc(NX*NY*sizeof(fftw_complex));
-
-  for(i=0;i<NX;++i) for(j=0;j<NY;++j){
-      yf[NY*i+j] = 0.0 + 0.0*I;
-    }
-
-  for(i=0;i<M;++i){
-    yf[NY*(u_idx[i]) + (v_idx[i])] = (y_r[i] + y_i[i]*I)/noise_stdev[i];
-    mask[NY*(u_idx[i]) + (v_idx[i])]  = 1/noise_stdev[i];
-  }
-
-  for(i=0;i<NX;++i) for(j=0;j<NY_h;++j){
-      mask_h[NY_h*i+j] = mask[NY*i+j];
-    }
-
-  free(u_idx);
-  free(v_idx);
-  free(y_r);
-  free(y_i);
-  free(mask);
-
   /* preparation end */
 
   get_current_time(&time_spec1);
 
   /* main loop */
 
-  iter = mfista_L1_TSV_core_fft(yf, mask_h, &NN, NX, NY, lambda_l1, 0, cinit,
-				xvec, fftw_plan_flag, nonneg_flag);
+  iter = mfista_L1_TSV_core_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev,
+				lambda_l1, 0, cinit, xinit, xout,
+				nonneg_flag, fftw_plan_flag);
 
   get_current_time(&time_spec2);
 
-  write_X_vector(argv[4], NN, xvec);
+  write_X_vector(argv[4], NN, xout);
 
   s_t = (double)time_spec1.tv_sec + (10e-10)*(double)time_spec1.tv_nsec;
   e_t = (double)time_spec2.tv_sec + (10e-10)*(double)time_spec2.tv_nsec;
@@ -209,9 +183,9 @@ int main(int argc, char *argv[]){
   mfista_result.ITER = iter;
   mfista_result.comp_time = e_t-s_t;
   mfista_result.nonneg = nonneg_flag;
-  
-  calc_result_fft(yf, mask_h, M, NX, NY,
-		  lambda_l1, 0, 0, xvec, &mfista_result);
+
+  calc_result_fft(M, NX, NY, u_idx, v_idx, y_r, y_i, noise_stdev,
+		  lambda_l1, 0, 0, xout, &mfista_result);
 
   /* main end */
 
@@ -219,8 +193,8 @@ int main(int argc, char *argv[]){
 
   mfista_io.fft       = 1;
   mfista_io.fft_fname = argv[1];
-  mfista_io.v_fname   = NULL;
-  mfista_io.A_fname   = NULL;
+  mfista_io.v_fname = NULL;
+  mfista_io.A_fname = NULL;
 
   if(init_flag == 1)
     mfista_io.in_fname = init_fname;
@@ -229,22 +203,25 @@ int main(int argc, char *argv[]){
 
   mfista_io.out_fname = argv[4];
   show_io_fnames(stdout, argv[0], &mfista_io);
-  show_result(stdout,argv[0],&mfista_result);
+  show_result(stdout, argv[0], &mfista_result);
 
   if(log_flag == 1){
     log_fid = fopenw(log_fname);
     show_io_fnames(log_fid, argv[0], &mfista_io);
-    show_result(log_fid,argv[0],&mfista_result);
+    show_result(log_fid, argv[0], &mfista_result);
     fclose(log_fid);
   }
 
   /* clear memory */
 
-  free(mask_h);
+  free(u_idx);
+  free(v_idx);
+  free(y_r);
+  free(y_i);
   free(noise_stdev);
-  free(xvec);
 
-  fftw_free(yf);
+  free(xinit);
+  free(xout);
 
   return 0;
 }
