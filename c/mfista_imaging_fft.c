@@ -27,7 +27,7 @@
 
 void usage(char *s)
 {
-  printf("%s <fft_data fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-nonneg} {-fftw_measure} {-log log_fname}\n\n",s);
+  printf("%s <fft_data fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-nonneg} {-cl_box box_fname} {-fftw_measure} {-log log_fname}\n\n",s);
   printf("  <fft_data fname>: file name of fft_file.\n");
   printf("  <double lambda_l1>: value of lambda_l1. Positive.\n");
   printf("  <double lambda_tv>: value of lambda_tv. Positive.\n");
@@ -37,8 +37,11 @@ void usage(char *s)
 
   printf(" Options.\n\n");
     
-  printf("  {X initfile}: file name of X for initialization.(optional).\n");
-  printf("  {-nonneg}: Use this option if x is nonnegative.\n");
+  printf("  {X initfile}: file name of X for initialization.\n");
+  printf("  {-nonneg}: Use this if x is nonnegative.\n");
+  printf("  {-maxiter N}: maximum number of iteration.\n");
+  printf("  {-eps epsilon}: epsilon used to check the convergence.\n");
+  printf("  {-cl_box box_fname}: file name of CLEAN box data (float).\n");
   printf("  {-fftw_measure}: Let fftw make plan with FFTW_MEASURE.\n");
   printf("  {-log log_fname}: Specify log file.\n\n");
 
@@ -65,11 +68,13 @@ int main(int argc, char *argv[]){
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
  
   int M, NN, NX, NY, dnum, i, *u_idx, *v_idx,
-    init_flag = 0, log_flag = 0, nonneg_flag = 0;
+    init_flag = 0, box_flag = 0, log_flag = 0, nonneg_flag = 0, maxiter = MAXITER;
 
-  char init_fname[1024],fftw_fname[1024],log_fname[1024];
+  char init_fname[1024], box_fname[1024], fftw_fname[1024], log_fname[1024];
   double *y_r, *y_i, *noise_stdev, *xinit, *xvec, 
-    cinit = CINIT, lambda_l1, lambda_tv, lambda_tsv;
+    cinit, lambda_l1, lambda_tv, lambda_tsv, eps = EPS;
+
+  float *cl_box;
   
   struct IO_FNAMES mfista_io;
   struct RESULT    mfista_result;
@@ -110,8 +115,22 @@ int main(int argc, char *argv[]){
       ++i;
       strcpy(log_fname,argv[i]);
     }
+    else if(strcmp(argv[i],"-maxiter") == 0){
+      ++i;
+      maxiter = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i],"-eps") == 0){
+      ++i;
+      eps = atof(argv[i]);
+    }
     else if(strcmp(argv[i],"-nonneg") == 0){
       nonneg_flag = 1;
+    }
+    else if(strcmp(argv[i],"-cl_box") == 0){
+      box_flag = 1;
+
+      ++i;
+      strcpy(box_fname,argv[i]);
     }
     else if(strcmp(argv[i],"-fftw_measure") == 0){
       fftw_plan_flag = FFTW_MEASURE;
@@ -174,9 +193,21 @@ int main(int argc, char *argv[]){
     clear_matrix(xinit, NN, 1);
   }
 
+  cl_box = alloc_f_vector(NN);
+  
+  if (box_flag ==1){ 
+
+    printf("Restrict x with CLEAN box defined in %s.\n", box_fname);
+    dnum = read_f_vector(box_fname, NN, cl_box);
+
+    if(dnum != NN)
+      printf("Number of read data is shorter than expected.\n");
+  }
+
   mfista_imaging_core_fft(u_idx, v_idx, y_r, y_i, noise_stdev,
-			  M, NX, NY, lambda_l1, lambda_tv, lambda_tsv, cinit,
+			  M, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv, cinit,
 			  xinit, xvec, nonneg_flag, fftw_plan_flag,
+			  box_flag, cl_box,
 			  &mfista_result);
 
   write_X_vector(argv[6], NN, xvec);
@@ -212,6 +243,7 @@ int main(int argc, char *argv[]){
   free(noise_stdev);
   free(xinit);
   free(xvec);
+  free(cl_box);
  
   return 0;
 }

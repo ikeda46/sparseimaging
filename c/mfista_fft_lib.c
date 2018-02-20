@@ -24,7 +24,6 @@
 */ 
 #include "mfista.h"
 
-
 void fft_half2full(int NX, int NY, fftw_complex *FT_h, fftw_complex *FT)
 {
   int i, j, NX_h, NY_h;
@@ -126,23 +125,18 @@ void calc_yAx_fft(int NX, int NY, fftw_complex *y_fft_h, double *mask, fftw_comp
 
   /* main */
 
-  for(i=0;i<NX*NY_h;++i){
-    if(mask[i]==0.0)
-      yAx_h[i] = 0.0 + 0.0*I;
-    else
-      yAx_h[i] = y_fft_h[i] - mask[i]*yAx_h[i]/sqrtNN;
-  }
+  for(i=0;i<NX*NY_h;++i) yAx_h[i] = y_fft_h[i] - mask[i]*yAx_h[i]/sqrtNN;
 
 }
 
 double norm_fftw_complex(int N, fftw_complex *vec)
 {
   int i;
-  double norm_v = 0.0;
+  fftw_complex tmp_norm = 0.0 + 0.0*I;
 
-  for(i=0; i<N; ++i) norm_v += creal(vec[i]*conj(vec[i]));
+  for(i=0; i<N; ++i) tmp_norm += vec[i]*conj(vec[i]);
 
-  return(norm_v);
+  return(creal(tmp_norm));
 }
 
 double calc_F_part_fft(int *N, int NX, int NY,
@@ -173,23 +167,21 @@ void dF_dx_fft(int *N, int NX, int NY,
 
   NY_h = (int)floor(((double)NY)/2) + 1;
   
-  for(i=0;i<NX*NY_h;++i){
-    if(mask_h[i] ==0.0)
-      yAx_fh[i] = 0.0 + 0.0*I;
-    else
-      yAx_fh[i] *= (mask_h[i]/(2*sqNN));
-  }
+  for(i=0;i<NX*NY_h;++i) yAx_fh[i] *= (mask_h[i]/(2*sqNN));
 
   fftw_execute(*ifftwplan);
 
   dcopy_(N, x4f, &inc, dFdx, &inc);
 }
 
-int mfista_L1_TV_core_fft(int NX, int NY,
+/* TV */
+
+int mfista_L1_TV_core_fft(int NX, int NY, int maxiter, double eps,
 			  fftw_complex *yf, double *mask,
 			  double lambda_l1, double lambda_tv,
-			  double cinit, double *xinit, double *xout,
-			  int nonneg_flag, unsigned int fftw_plan_flag)
+			  double *cinit, double *xinit, double *xout,
+			  int nonneg_flag, unsigned int fftw_plan_flag,
+			  int box_flag, float *cl_box)
 {
   int i, iter, inc = 1, NN, NY_h;
   double *mask_h, *zvec, *xtmp, *xnew, *dfdx, *ones,
@@ -206,15 +198,19 @@ int mfista_L1_TV_core_fft(int NX, int NY,
 
   printf("computing image with MFISTA.\n");
 
+  printf("stop if iter = %d, or Delta_cost < %e\n", maxiter, eps);
+
   /* allocate variables */ 
 
-  cost  = alloc_vector(MAXITER);
+  cost  = alloc_vector(maxiter);
   dfdx  = alloc_vector(NN);
   xnew  = alloc_vector(NN);
   xtmp  = alloc_vector(NN);
   zvec  = alloc_vector(NN);
   x4f   = alloc_vector(NN);
   mask_h = alloc_vector(NX*NY_h);
+
+  /* preparation for TV */
 
   ones  = alloc_vector(NN);
   for(i = 0; i < NN; ++i) ones[i]=1;
@@ -239,6 +235,14 @@ int mfista_L1_TV_core_fft(int NX, int NY,
   full2half(NX, NY, mask, mask_h);
   fft_full2half(NX, NY, yf, yf_h);
 
+#ifdef PTHREAD
+  int omp_num = THREAD_NUM;
+  printf("Run mfista with %d threads.\n",omp_num);
+
+  if(fftw_init_threads()==0)
+    printf("Could not initialize multi threads for fftw3.\n");
+#endif
+
   fftwplan  = fftw_plan_dft_r2c_2d( NX, NY, x4f, yAx_fh, fftw_plan_flag);
   ifftwplan = fftw_plan_dft_c2r_2d( NX, NY, yAx_fh, x4f, fftw_plan_flag);
 
@@ -247,7 +251,7 @@ int mfista_L1_TV_core_fft(int NX, int NY,
   dcopy_(&NN, xinit, &inc, xout, &inc);
   dcopy_(&NN, xinit, &inc, zvec, &inc);
 
-  c = cinit;
+  c = *cinit;
 
   /* main */
 
@@ -260,18 +264,18 @@ int mfista_L1_TV_core_fft(int NX, int NY,
   tvcost = TV(NX, NY, xout);
   costtmp += lambda_tv*tvcost;
 
-  for(iter=0; iter<MAXITER; iter++){
+  for(iter=0; iter<maxiter; iter++){
 
     cost[iter] = costtmp;
 
-    if((iter % 100) == 0) printf("%d cost = %f \n",(iter+1), cost[iter]);
+    if((iter % 100) == 0) printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
 
     Qcore = calc_F_part_fft(&NN, NX, NY, yf_h, mask_h, 
 			    &fftwplan, zvec, yAx_fh, x4f, yAx_f);
 
     dF_dx_fft(&NN, NX, NY, yAx_fh, mask_h, zvec, &ifftwplan, x4f, dfdx);
             
-    for(i=0; i<MAXITER; i++){
+    for(i=0; i<maxiter; i++){
 
       if(nonneg_flag == 1){
 	dcopy_(&NN, ones, &inc, xtmp, &inc);
@@ -281,8 +285,9 @@ int mfista_L1_TV_core_fft(int NX, int NY,
 	daxpy_(&NN, &tmpa, dfdx, &inc, xtmp, &inc);
 	daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
 
-	FGP_nonneg(&NN, NX, NY, xtmp, lambda_tv/c, FGPITER,
-		   pmat, qmat, rmat, smat, npmat, nqmat, xnew);
+	FGP_nonneg_box(&NN, NX, NY, xtmp, lambda_tv/c, FGPITER,
+		       pmat, qmat, rmat, smat, npmat, nqmat, xnew,
+		       box_flag, cl_box);
       }
       else{
 	dcopy_(&NN, dfdx, &inc, xtmp, &inc);
@@ -290,8 +295,9 @@ int mfista_L1_TV_core_fft(int NX, int NY,
 	dscal_(&NN, &tmpa, xtmp, &inc);
 	daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
 
-	FGP_L1(&NN, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
-	       pmat, qmat, rmat, smat, npmat, nqmat, xnew);
+	FGP_L1_box(&NN, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
+		   pmat, qmat, rmat, smat, npmat, nqmat, xnew,
+		   box_flag, cl_box);
       }
 
       Fval = calc_F_part_fft(&NN, NX, NY, yf_h, mask_h,
@@ -344,11 +350,11 @@ int mfista_L1_TV_core_fft(int NX, int NY,
       }
     }
 
-    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])<EPS)) break;
+    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])< eps )) break;
 
     mu = munew;
   }
-  if(iter == MAXITER){
+  if(iter == maxiter){
     printf("%d cost = %f \n",(iter), cost[iter-1]);
     iter = iter -1;
   }
@@ -356,6 +362,8 @@ int mfista_L1_TV_core_fft(int NX, int NY,
     printf("%d cost = %f \n",(iter+1), cost[iter]);
 
   printf("\n");
+
+  *cinit = c;
 
   /* clear memory */
 
@@ -382,21 +390,28 @@ int mfista_L1_TV_core_fft(int NX, int NY,
 
   fftw_destroy_plan(fftwplan);
   fftw_destroy_plan(ifftwplan);
+
+#ifdef PTHREAD
+  fftw_cleanup_threads();
+#else
   fftw_cleanup();
+#endif
+
   
   return(iter+1);
 }
 
-
 /* TSV */
 
-int mfista_L1_TSV_core_fft(int NX, int NY,
+int mfista_L1_TSV_core_fft(int NX, int NY, int maxiter, double eps,
 			   fftw_complex *yf, double *mask,
 			   double lambda_l1, double lambda_tsv,
-			   double cinit, double *xinit, double *xout,
-			   int nonneg_flag, unsigned int fftw_plan_flag)
+			   double *cinit, double *xinit, double *xout,
+			   int nonneg_flag, unsigned int fftw_plan_flag,
+			   int box_flag, float *cl_box)
 {
-  void (*soft_th)(double *vector, int length, double eta, double *newvec);
+  void (*soft_th_box)(double *vector, int length, double eta, double *newvec,
+		      int box_flag, float *cl_box);
   int NN, i, iter, inc = 1, NY_h;
   double *mask_h, *xtmp, *xnew, *zvec, *dfdx, *x4f,
     Qcore, Fval, Qval, c, cinv, tmpa, l1cost, tsvcost, costtmp, *cost,
@@ -405,20 +420,22 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
   fftw_plan fftwplan, ifftwplan;
 
   /* set parameters */
-  
+
   NN = NX*NY;
   NY_h = ((int)floor(((double)NY)/2)+1);
 
   printf("computing image with MFISTA.\n");
 
+  printf("stop if iter = %d, or Delta_cost < %e\n", maxiter, eps);
+
   /* allocate variables */
 
-  cost  = alloc_vector(MAXITER);
-  dfdx  = alloc_vector(NN);
-  xnew  = alloc_vector(NN);
-  xtmp  = alloc_vector(NN);
-  zvec  = alloc_vector(NN);
-  x4f   = alloc_vector(NN);
+  cost   = alloc_vector(maxiter);
+  dfdx   = alloc_vector(NN);
+  xnew   = alloc_vector(NN);
+  xtmp   = alloc_vector(NN);
+  zvec   = alloc_vector(NN);
+  x4f    = alloc_vector(NN);
   mask_h = alloc_vector(NX*NY_h);
  
   /* fftw malloc */
@@ -432,15 +449,23 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
   full2half(NX, NY, mask, mask_h);
   fft_full2half(NX, NY, yf, yf_h);
 
+#ifdef PTHREAD
+  int omp_num = THREAD_NUM;
+  printf("Run mfista with %d threads.\n",omp_num);
+
+  if(fftw_init_threads()==0)
+    printf("Could not initialize multi threads for fftw3.\n");
+#endif
+  
   fftwplan  = fftw_plan_dft_r2c_2d( NX, NY, x4f, yAx_fh, fftw_plan_flag);
   ifftwplan = fftw_plan_dft_c2r_2d( NX, NY, yAx_fh, x4f, fftw_plan_flag);
 
   /* initialization */
 
   if(nonneg_flag == 0)
-    soft_th=soft_threshold;
+    soft_th_box =soft_threshold_box;
   else if(nonneg_flag == 1)
-    soft_th=soft_threshold_nonneg;
+    soft_th_box =soft_threshold_nonneg_box;
   else {
     printf("nonneg_flag must be chosen properly.\n");
     return(0);
@@ -449,7 +474,7 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
   dcopy_(&NN, xinit, &inc, xout, &inc);
   dcopy_(&NN, xinit, &inc, zvec, &inc);
 
-  c = cinit;
+  c = *cinit;
 
   /* main */
 
@@ -464,18 +489,19 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
     costtmp += lambda_tsv*tsvcost;
   }
 
-  for(iter = 0; iter < MAXITER; iter++){
+  for(iter = 0; iter < maxiter; iter++){
 
     cost[iter] = costtmp;
 
-    if((iter % 100) == 0) printf("%d cost = %f \n",(iter+1), cost[iter]);
+    if((iter % 100) == 0)
+      printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
 
     Qcore = calc_F_part_fft(&NN, NX, NY, yf_h, mask_h, 
 			    &fftwplan, zvec, yAx_fh, x4f, yAx_f);
 
     dF_dx_fft(&NN, NX, NY, yAx_fh, mask_h, zvec, &ifftwplan, x4f, dfdx);
 
-    if( lambda_tsv > 0 ){
+    if( lambda_tsv > 0.0 ){
       tsvcost = TSV(NX, NY, zvec);
       Qcore += lambda_tsv*tsvcost;
 
@@ -484,12 +510,12 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
       daxpy_(&NN, &alpha, x4f, &inc, dfdx, &inc);
     }
 
-    for( i = 0; i < MAXITER; i++){
+    for( i = 0; i < maxiter; i++){
       dcopy_(&NN, dfdx, &inc, xtmp, &inc);
       cinv = 1/c;
       dscal_(&NN, &cinv, xtmp, &inc);
       daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
-      soft_th(xtmp, NN, lambda_l1/c, xnew);
+      soft_th_box(xtmp, NN, lambda_l1/c, xnew, box_flag, cl_box);
 
       Fval = calc_F_part_fft(&NN, NX, NY, yf_h, mask_h,
 			     &fftwplan, xnew, yAx_fh, x4f, yAx_f);
@@ -527,7 +553,7 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
 	
       dcopy_(&NN, xnew, &inc, xout, &inc);
 	    
-    }	
+    }
     else{
       dcopy_(&NN, xout, &inc, zvec, &inc);
 
@@ -537,14 +563,15 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
       tmpa = mu/munew;
       daxpy_(&NN, &tmpa, xnew, &inc, zvec, &inc);
 
+      /* another stopping rule */
       if((iter>1) && (dasum_(&NN, xout, &inc) == 0)) break;
     }
 
-    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])<EPS)) break;
+    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])< eps )) break;
 
     mu = munew;
   }
-  if(iter == MAXITER){
+  if(iter == maxiter){
     printf("%d cost = %f \n",(iter), cost[iter-1]);
     iter = iter -1;
   }
@@ -552,6 +579,8 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
     printf("%d cost = %f \n",(iter+1), cost[iter]);
 
   printf("\n");
+
+  *cinit = c;
 
   /* free */
   
@@ -569,10 +598,17 @@ int mfista_L1_TSV_core_fft(int NX, int NY,
 
   fftw_destroy_plan(fftwplan);
   fftw_destroy_plan(ifftwplan);
+
+#ifdef PTHREAD
+  fftw_cleanup_threads();
+#else
   fftw_cleanup();
+#endif
 
   return(iter+1);
 }
+
+/* results */
 
 void calc_result_fft(int M, int NX, int NY,
 		     fftw_complex *yf, double *mask,
@@ -615,7 +651,6 @@ void calc_result_fft(int M, int NX, int NY,
   mfista_result->N  = NN;
   mfista_result->NX = NX;
   mfista_result->NY = NY;
-  mfista_result->maxiter = MAXITER;
 	    
   mfista_result->lambda_l1  = lambda_l1;
   mfista_result->lambda_tv  = lambda_tv;
@@ -661,18 +696,25 @@ void calc_result_fft(int M, int NX, int NY,
   fftw_cleanup();
 }
 
-void mfista_imaging_core_fft(int *u_idx, int *v_idx,
+/* main subroutine */
+
+void mfista_imaging_core_fft(int *u_idx, int *v_idx, 
 			     double *y_r, double *y_i, double *noise_stdev,
-			     int M, int NX, int NY,
+			     int M, int NX, int NY, int maxiter, double eps,
 			     double lambda_l1, double lambda_tv, double lambda_tsv,
 			     double cinit, double *xinit, double *xout,
 			     int nonneg_flag, unsigned int fftw_plan_flag,
+			     int box_flag, float *cl_box,
 			     struct RESULT *mfista_result)
 {
-  int iter = 0;
-  double *mask, s_t, e_t;
+  int i, iter = 0;
+  double epsilon, *mask, s_t, e_t, c = cinit;
   struct timespec time_spec1, time_spec2;
   fftw_complex *yf;
+
+  for(epsilon=0, i=0;i<M;++i) epsilon += y_r[i]*y_r[i] + y_i[i]*y_i[i];
+    
+  epsilon *= eps/((double)M);
 
   yf   = (fftw_complex*) fftw_malloc(NX*NY*sizeof(fftw_complex));
   mask = alloc_vector(NX*NY);
@@ -682,12 +724,14 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
   get_current_time(&time_spec1);
 
   if( lambda_tv == 0 ){
-    iter = mfista_L1_TSV_core_fft(NX, NY, yf, mask, lambda_l1, lambda_tsv, cinit, xinit, xout,
-				  nonneg_flag, fftw_plan_flag);
+    iter = mfista_L1_TSV_core_fft(NX, NY, maxiter, epsilon,
+				  yf, mask, lambda_l1, lambda_tsv, &c, xinit, xout,
+				  nonneg_flag, fftw_plan_flag, box_flag, cl_box);
   }
   else if( lambda_tv != 0  && lambda_tsv == 0 ){
-    iter = mfista_L1_TV_core_fft(NX, NY, yf, mask, lambda_l1, lambda_tv, cinit, xinit, xout,
-				 nonneg_flag, fftw_plan_flag);
+    iter = mfista_L1_TV_core_fft(NX, NY, maxiter, epsilon,
+				 yf, mask, lambda_l1, lambda_tv, &c, xinit, xout,
+				 nonneg_flag, fftw_plan_flag, box_flag, cl_box);
   }
   else{
     printf("You cannot set both of lambda_TV and lambda_TSV positive.\n");
@@ -702,6 +746,8 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
   mfista_result->comp_time = e_t-s_t;
   mfista_result->ITER      = iter;
   mfista_result->nonneg    = nonneg_flag;
+  mfista_result->Lip_const = c;
+  mfista_result->maxiter   = maxiter;
 
   calc_result_fft(M, NX, NY, yf, mask, lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
 

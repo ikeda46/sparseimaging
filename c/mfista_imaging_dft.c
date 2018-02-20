@@ -27,7 +27,7 @@
 
 void usage(char *s)
 {
-  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-looe} {-nonneg} {-log log_fname}\n\n",s);
+  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-looe} {-nonneg} {-cl_box box_fname} {-log log_fname}\n\n",s);
   printf("  <int m>: number of row of A.\n");
   printf("  <int n>: number of column of A.\n");
   printf("  <V fname>: file name of V.\n");
@@ -40,12 +40,15 @@ void usage(char *s)
 
   printf(" Options.\n\n");
     
-  printf("  {X initfile}: file name of X for initialization.(optional).\n");
-  printf("  {-t}: use this option if A is stored with row major mode.\n");
-  printf("  {-rec NX}: use this option if image is not square but rectangular.\n");
+  printf("  {X initfile}: file name of X for initialization.\n");
+  printf("  {-t}: use this if A is stored with row major mode.\n");
+  printf("  {-rec NX}: use this if image is not square but rectangular.\n");
   printf("             NX is the length of one dimension of the image.\n");
+  printf("  {-maxiter N}: maximum number of iteration.\n");
+  printf("  {-eps epsilon}: epsilon used to check the convergence.\n");
   printf("  {-looe}: Compute approximation of LOOE.\n");
-  printf("  {-nonneg}: Use this option if x is nonnegative.\n");
+  printf("  {-nonneg}: Use this if x is nonnegative.\n");
+  printf("  {-cl_box box_fname}: file name of CLEAN box data (float).\n");  
   printf("  {-log log_fname}: Specify log file.\n\n");
 
   printf(" This program solves \n\n");
@@ -70,15 +73,17 @@ void usage(char *s)
 
 int main(int argc, char *argv[])
 {
-  double *y, *A, *xinit, *xvec, cinit = CINIT, lambda_l1, lambda_tv, lambda_tsv;
-  char init_fname[1024],fname[1024],log_fname[1024];
+  double *y, *A, *xinit, *xvec, cinit, lambda_l1, lambda_tv, lambda_tsv, eps = EPS;
+  char init_fname[1024], box_fname[1024], fname[1024], log_fname[1024];
   int i, M, N, NX, NY, 
-    trans_flag = 0, rec_flag = 0, init_flag = 0, nonneg_flag = 0, looe_flag = 0,
-    log_flag = 0;
+    trans_flag = 0, rec_flag = 0, init_flag = 0, box_flag = 0, nonneg_flag = 0, looe_flag = 0,
+    log_flag = 0, maxiter = MAXITER;
   unsigned long tmpdnum, dnum;
   struct RESULT    mfista_result;
   struct IO_FNAMES mfista_io;
   FILE* log_fid;
+
+  float *cl_box;
 
   /* options */
 
@@ -93,6 +98,14 @@ int main(int argc, char *argv[])
       ++i;
       NX = atoi(argv[i]);
     }
+    else if(strcmp(argv[i],"-maxiter") == 0){
+      ++i;
+      maxiter = atoi(argv[i]);
+    }
+    else if(strcmp(argv[i],"-eps") == 0){
+      ++i;
+      eps = atof(argv[i]);
+    }
     else if(strcmp(argv[i],"-looe") == 0){
       looe_flag = 1; 
     }
@@ -104,6 +117,12 @@ int main(int argc, char *argv[])
     }
     else if(strcmp(argv[i],"-nonneg") == 0){
       nonneg_flag = 1;
+    }
+    else if(strcmp(argv[i],"-cl_box") == 0){
+      box_flag = 1;
+
+      ++i;
+      strcpy(box_fname,argv[i]);
     }
     else{
       init_flag = 1;
@@ -190,14 +209,17 @@ int main(int argc, char *argv[])
   else
     printf("\n");
 
+  cl_box = alloc_f_vector(N);
+  
   if (trans_flag ==1){ 
     transpose_matrix(A, N, M);
   }
 
   /* main calculation */
   
-  mfista_imaging_core(y, A, &M, &N, NX, NY, lambda_l1, lambda_tv, lambda_tsv,
-		      cinit, xinit, xvec, nonneg_flag, looe_flag, &mfista_result);
+  mfista_imaging_core(y, A, &M, &N, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv,
+		      cinit, xinit, xvec, nonneg_flag, looe_flag, box_flag, cl_box,
+		      &mfista_result);
 
   /* post processing */
 
