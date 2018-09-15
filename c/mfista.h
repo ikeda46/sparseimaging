@@ -30,7 +30,6 @@
 #include <time.h>
 #include <limits.h>
 #include "blas.h"
-#include "lapack.h"
 #include <complex.h> 
 #include <fftw3.h>
 
@@ -60,9 +59,6 @@ struct RESULT{
   double l1cost;
   double tvcost;
   double tsvcost;
-  double looe_m;
-  double looe_std;
-  double Hessian_positive;
   double finalcost;
   double comp_time;
   double *residual;
@@ -150,22 +146,6 @@ extern void FGP_nonneg_box(int *N, int NX, int NY,
 			   double *npmat, double *nqmat, double *xvec,
 			   int box_flag, float *cl_box);
 
-/* subroutines for mfista_L1_TSV_fftw */
-
-extern void idx2mat(int M, int NX, int NY,
-		    int *u_idx, int *v_idx, double *y_r, double *y_i, double *noise_stdev,
-		    fftw_complex *yf, double *mk);
-
-/* for mfista_imaging_dft */
-
-extern void mfista_imaging_core(double *y, double *A,
-				int *M, int *N, int NX, int NY, int maxiter, double eps,
-				double lambda_l1, double lambda_tv, double lambda_tsv,
-				double cinit, double *xinit, double *xout,
-				int nonneg_flag, int looe_flag,
-				int box_flag, float *cl_box,				
-				struct RESULT *mfista_result);
-
 /* for mfista_imaging_fft */
 
 extern void mfista_imaging_core_fft(int *u_idx, int *v_idx,
@@ -177,16 +157,15 @@ extern void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 				    int box_flag, float *cl_box,
 				    struct RESULT *mfista_result);
 
-/* looe */
+/* for mfista_imaging_nufft */
 
-extern double compute_LOOE_L1(int *M, int *N, double lambda_l1,
-			      double *yvec, double *Amat, double *xvec, double *yAx,
-			      double *looe_m, double *looe_std);
-
-extern double compute_LOOE_L1_TSV(int *M, int *N, int NX, int NY,
-				  double lambda_l1, double lambda_tsv,
-				  double *yvec, double *Amat, double *xvec, double *yAx,
-				  double *looe_m, double *looe_std);
+extern void mfista_imaging_core_nufft(double *u_dx, double *v_dy, 
+				      double *vis_r, double *vis_i, double *vis_std,
+				      int M, int NX, int NY, int maxiter, double eps,
+				      double lambda_l1, double lambda_tv, double lambda_tsv,
+				      double cinit, double *xinit, double *xout,
+				      int nonneg_flag, int box_flag, float *cl_box,
+				      struct RESULT *mfista_result);
 
 /* output */
 

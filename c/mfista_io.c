@@ -83,12 +83,12 @@ unsigned long read_A_matrix(char *fname, int height, int width, double *matrix)
   }
   else{
     n = 0;
-    fp = fopenr(fname);  
+    fp = fopenr(fname);
     for(i=0;i < height; i++){
       tmp = fread(matrix + n, sizeof(double), width, fp);
       n += tmp;
       if(i%1000==0)
-  printf("reading %d line of A.\n",i);
+	printf("reading %d line of A.\n",i);
     }
     fclose(fp);
   }
@@ -209,17 +209,6 @@ void show_result(FILE *fid, char *fname, struct RESULT *mfista_result)
 
   if(mfista_result->lambda_tv != 0)
     fprintf(fid," TV cost:                %e\n", mfista_result->tvcost);
-
-  fprintf(fid,"\n");
-  
-  if(mfista_result->Hessian_positive ==1){
-    fprintf(fid," LOOE:(mean)             %e\n", mfista_result->looe_m);
-    fprintf(fid," LOOE:(std)              %e\n", mfista_result->looe_std);
-  }
-  else if (mfista_result->Hessian_positive ==0)
-    fprintf(fid," LOOE:    Could not be computed because Hessian was not positive definite.\n");
-  else if (mfista_result->Hessian_positive == -1)
-    fprintf(fid," LOOE:    Did not compute LOOE.\n");
 
   fprintf(fid,"\n");
 

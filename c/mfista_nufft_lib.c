@@ -23,84 +23,347 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */ 
 #include "mfista.h"
-#include "finufft_c.h"
 
-#define NU_SGN 1
-#define NU_EPS 1.0e-12
+#define NU_SIGN -1
+#define MSP 12
 
-/* start nufft codes */
+/* nufft */
 
-double complex *alloc_complex_vector(int length)
+int idx_fftw(int m, int Mr)
 {
-  return malloc(sizeof(double complex)*length);
+  if(m >= 0 && m < Mr/2)
+    return(m);
+  else if(m >= -Mr/2)
+    return(m+Mr);
+  else
+    return(2*Mr);
 }
 
-void calc_yAx_nufft(double complex *yAx, int M, double complex *wvis, double complex *weight)
+int m2mr(int id, int N)
+{
+  if(id < N/2)
+    return(id + 3*N/2);
+  else
+    return(id - N/2);
+}
+
+void preNUFFT(double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      double *u, double *v, int M, int Nx, int Ny)
+{
+  int i, j, k, l;
+  double taux, tauy, coeff, xix, xiy, Mrx, Mry,
+    tmpx, tmpy, pi, powj, tmpi, tmpj;
+
+  pi = M_PI;
+
+  Mrx = (double) 2*Nx;
+  Mry = (double) 2*Ny;
+
+  taux = 12/((double)(Nx*Nx));
+  tauy = 12/((double)(Ny*Ny));
+
+  coeff = pi/sqrt(taux*tauy);
+
+  tmpx = pow((pi/Mrx),2.0)/taux;
+  tmpy = pow((pi/Mry),2.0)/tauy;
+
+  for(l = 0; l <= MSP; ++l){
+    E3x[l] = exp(-tmpx*((double)(l*l)));
+    E3y[l] = exp(-tmpy*((double)(l*l)));
+  }
+
+  for(i = 0 ; i < Nx; ++i){
+
+    tmpi = (double)(i-Nx/2);
+    tmpx = taux*tmpi*tmpi;
+
+    for(j = 0; j< Ny; ++j){
+      tmpj = (double)(j-Nx/2);
+      tmpy = tauy*tmpj*tmpj;
+      E4mat[Ny*i + j] = coeff*exp(tmpx + tmpy);
+    }
+  }
+
+  for(k = 0; k < M; ++k){
+
+    /* mx, my, xix, xiy */
+
+    tmpx = round(u[k]*Mrx/(2*pi));
+    tmpy = round(v[k]*Mry/(2*pi));
+    
+    mx[k] = (int)tmpx;
+    my[k] = (int)tmpy;
+
+    xix = (2*pi*tmpx)/Mrx;
+    xiy = (2*pi*tmpy)/Mry;
+
+    /* E1 */
+
+    tmpx = -pow((u[k]-xix),2.0)/(4*taux);
+    tmpy = -pow((v[k]-xiy),2.0)/(4*tauy);
+
+    E1[k] = exp( tmpx + tmpy );
+
+    /* E2 */
+
+    tmpx = pi*(u[k]-xix)/(Mrx*taux);
+    tmpy = pi*(v[k]-xiy)/(Mry*tauy);
+    
+    powj = (double)(-MSP+1);
+
+    for(j = 0; j < 2*MSP; ++j){
+      E2x[2*MSP*k + j] = exp(powj*tmpx);
+      E2y[2*MSP*k + j] = exp(powj*tmpy);
+      powj += 1.0;
+    }
+  }
+}
+
+void NUFFT2d1(double *Xout,
+	      int M, int Nx, int Ny,
+	      double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      fftw_complex *in, double *out, fftw_plan *fftwplan_c2r,
+	      double *Fin_r, double *Fin_i)
+{
+  int j, k, lx, ly, Mrx, Mry, idx, idy, Mh;
+  double v0_r, v0_i, vy_r, vy_i, MM, tmp;
+
+  Mrx = 2*Nx;
+  Mry = 2*Ny;
+  Mh  = Ny+1;
+  MM  = (double)(Mrx*Mry);
+  
+  for(j = 0; j < Mrx*Mh; ++j) in[j] = 0;
+
+  for(k = 0; k<M; ++k){
+
+    v0_r = Fin_r[k]*E1[k];
+    v0_i = (NU_SIGN)*Fin_i[k]*E1[k];
+
+    /* for original */
+    
+    for(ly = (-MSP+1); ly <= MSP; ++ly){
+
+      tmp = E2y[2*MSP*k + (ly+MSP-1)]*E3y[abs(ly)];
+      
+      vy_r = v0_r*tmp;
+      vy_i = v0_i*tmp;
+
+      idy = idx_fftw(my[k]+ly,Mry);
+
+      if(idy < (Ny+1))
+	for(lx = (-MSP+1); lx <= MSP; ++lx){
+	  idx = idx_fftw(mx[k]+lx,Mrx);
+	  in[idx*Mh+idy] += (vy_r + I*vy_i)*E2x[2*MSP*k+(lx+MSP-1)]*E3x[abs(lx)]/2;
+	}
+
+      idy = idx_fftw(-(my[k]+ly),Mry);
+
+      if(idy < (Ny+1))
+	for(lx = (-MSP+1); lx <= MSP; ++lx){
+	  idx = idx_fftw(-(mx[k]+lx),Mrx);
+	  in[idx*Mh+idy] += (vy_r - I*vy_i)*E2x[2*MSP*k+(lx+MSP-1)]*E3x[abs(lx)]/2;
+	}
+
+    }
+  }
+
+  fftw_execute(*fftwplan_c2r);
+
+  for(k = 0; k < Nx; ++k){
+
+    idx = m2mr(k,Nx);
+    for(j = 0; j < Ny; ++j){
+
+      idy = m2mr(j,Ny);
+      Xout[k*Ny + j] = out[idx*Mry + idy]*E4mat[k*Ny + j]/MM;
+    }
+  }
+  
+}
+
+void NUFFT2d2(double *Fout_r, double *Fout_i,
+	      int M, int Nx, int Ny,
+	      double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      double *in, fftw_complex *out, fftw_plan *fftwplan_r2c,
+	      double *Xin)
+{
+  int i, j, k, lx, ly, Mrx, Mry, Mh, idx, idy;
+  double f_r, tmp, MM;
+
+  Mrx = 2*Nx;
+  Mry = 2*Ny;
+  Mh  = Ny+1;
+  MM = (double)Mrx*Mry;
+
+  for( i = 0; i < Nx; ++i){
+    idx = m2mr(i,Nx);
+    for( j = 0; j < Ny; ++j){
+      idy = m2mr(j,Ny);
+      in[idx*Mry + idy] = Xin[i*Ny + j]*E4mat[i*Ny + j];
+    }
+  }
+
+  fftw_execute(*fftwplan_r2c);
+
+  for(k = 0; k < M; ++k) for(ly = (-MSP+1); ly <= MSP; ++ly){
+	
+      f_r = E1[k]*E2y[2*MSP*k + (ly+MSP-1)]*E3y[abs(ly)];
+
+      idy = idx_fftw((my[k]+ly),Mry);
+      
+      if(idy < (Ny+1)){
+	for(lx = (-MSP+1); lx <= MSP; ++lx){
+
+	  idx = idx_fftw((mx[k]+lx),Mrx);
+	  tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
+
+	  Fout_r[k] +=           creal(out[idx*Mh + idy])*tmp;
+	  Fout_i[k] += (NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
+	}
+      }
+
+      else{
+	idy = idx_fftw(-(my[k]+ly),Mry);
+	
+	if(idy < (Ny+1)) for(lx = (-MSP+1); lx <= MSP; ++lx){
+	    
+	    idx = idx_fftw(-(mx[k]+lx),Mrx);
+	    tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
+	    
+	    Fout_r[k] +=            creal(out[idx*Mh + idy])*tmp;
+	    Fout_i[k] += -(NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
+	  }
+      }
+    }
+
+}
+
+void calc_yAx_nufft(double *yAx_r, double *yAx_i,
+		    int M, double *vis_r, double *vis_i, double *weight)
 {
   int i;
 
   /* main */
 
-  for(i=0; i<M; ++i) yAx[i] = wvis[i] - yAx[i]*weight[i];
+  for(i = 0; i < M; ++i){
+    yAx_r[i] = (vis_r[i] - yAx_r[i])*weight[i];
+    yAx_i[i] = (vis_i[i] - yAx_i[i])*weight[i];
+  }
 }
 
-double calc_F_part_nufft(double complex *yAx,
-			 int M, int NX, int NY, double *u_dx, double *v_dy,
-			 double complex *wvis, double complex *weight,
-			 double *xvec, double complex *tmp_c_vec)
+double calc_F_part_nufft(double *yAx_r, double *yAx_i,
+			 int M, int Nx, int Ny,
+			 double *E1, double *E2x, double *E2y,
+			 double *E3x, double *E3y, double *E4mat, int *mx, int *my,
+			 double *in_r, fftw_complex *out_c, double *dzeros, fftw_plan *fftwplan_r2c,
+			 double *vis_r, double *vis_i, double *weight, double *xvec)
 {
-  int i;
-  double complex chisq;
+  int inc = 1, Ml = M, MM = 4*Nx*Ny;
+  double chisq;
 
-  for(i=0; i<NX*NY; ++i) tmp_c_vec[i] = xvec[i] + 0.0*I;
+  /* initializaton for nufft */
 
-  finufft2d2_c(M, u_dx, v_dy, yAx, NU_SGN, NU_EPS, NX, NY, tmp_c_vec);
+  dcopy_(&MM, dzeros, &inc, in_r, &inc);
+  dcopy_(&Ml, dzeros, &inc, yAx_r, &inc);
+  dcopy_(&Ml, dzeros, &inc, yAx_i, &inc);
 
-  calc_yAx_nufft(yAx, M, wvis, weight);
+  /* nufft */
+  
+  NUFFT2d2(yAx_r, yAx_i, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+	   in_r, out_c, fftwplan_r2c, xvec);
 
-  for(chisq = 0, i = 0 ; i<M; ++i)
-    chisq += yAx[i]*conj(yAx[i]);
+  calc_yAx_nufft(yAx_r, yAx_i, M, vis_r, vis_i, weight);
 
-  return(creal(chisq)/2);
+  chisq  = ddot_(&Ml, yAx_r, &inc, yAx_r, &inc);
+  chisq += ddot_(&Ml, yAx_i, &inc, yAx_i, &inc);
+
+  return(chisq/2);
 }
 
-void dF_dx_nufft(double *dFdx, int M, int NX, int NY, double *u_dx, double *v_dy,
-		 double complex *yAx, double complex *weight, double complex *tmp_c_vec)
+void dF_dx_nufft(double *dFdx,
+		 int M, int Nx, int Ny,
+		 double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+		 double *E4mat, int *mx, int *my,
+		 fftw_complex *in_c, double *out_r, fftw_plan *fftwplan_c2r, double *weight,
+		 double *yAx_r, double *yAx_i)
 {
   int i;
 
-  for(i=0; i<M; ++i) yAx[i] *= weight[i];
+  for(i = 0; i < M; ++i){
+    yAx_r[i] *= weight[i];
+    yAx_i[i] *= weight[i];
+  }
 
-  finufft2d1_c(M, u_dx, v_dy, yAx, (-1)*NU_SGN, NU_EPS, NX, NY, tmp_c_vec);
+  NUFFT2d1(dFdx, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat,
+	   mx, my, in_c, out_r, fftwplan_c2r, yAx_r, yAx_i);
 
-  for(i=0; i<NX*NY; ++i) dFdx[i] = creal(tmp_c_vec[i]);
 }
 
 /* TV */
 
 int mfista_L1_TV_core_nufft(double *xout,
-			    int M, int NX, int NY, double *u_dx, double *v_dy,
+			    int M, int Nx, int Ny,
+			    double *u_dx, double *v_dy,
 			    int maxiter, double eps,
-			    double complex *vis, double *vis_std,
+			    double *vis_r, double *vis_i, double *vis_std,
 			    double lambda_l1, double lambda_tv,
 			    double *cinit, double *xinit, 
 			    int nonneg_flag, int box_flag, float *cl_box)
 {
-  int i, iter, inc = 1, NN;
-  double *zvec, *xtmp, *xnew, *dfdx, *ones,
-    *rmat, *smat, *npmat, *nqmat, *pmat, *qmat,
-    *cost, 
-    Qcore, Fval, Qval, c, costtmp, 
-    mu=1, munew, alpha = 1, tmpa, l1cost, tvcost;
-  double complex *yAx, *tmp_c_vec, *wvis, *weight;
+  int NN = Nx*Ny, MMh = 2*Nx*(Ny+1), i, j, iter, inc = 1, *mx, *my;
+  double Qcore, Fval, Qval, c, costtmp, mu=1, munew, alpha = 1, tmpa, l1cost, tvcost,
+    *weight, *yAx_r, *yAx_i, *E1, *E2x, *E2y, *E3x, *E3y, *E4mat, *rvec, *dzeros,
+    *zvec, *xtmp, *xnew, *dfdx, *rmat, *smat, *npmat, *nqmat, *pmat, *qmat, *cost;
+  fftw_complex *cvec;
+  fftw_plan fftwplan_c2r, fftwplan_r2c;
+  unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
   /* set parameters */
   
-  NN = NX*NY;
-
-  printf("computing image with MFISTA.\n");
+  printf("computing image with MFISTA with NUFFT.\n");
 
   printf("stop if iter = %d, or Delta_cost < %e\n", maxiter, eps);
+
+  /* prepare for nufft */
+
+  E1  = alloc_vector(M);
+  E2x = alloc_vector(2*MSP*M);
+  E2y = alloc_vector(2*MSP*M);
+  E3x = alloc_vector(MSP+1);
+  E3y = alloc_vector(MSP+1);
+  E4mat = alloc_vector(NN);
+  mx  = alloc_int_vector(M);
+  my  = alloc_int_vector(M);
+
+  preNUFFT(E1, E2x, E2y, E3x, E3y, E4mat, mx, my, u_dx, v_dy, M, Nx, Ny);
+
+  /* for fftw */
+  
+  cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
+  rvec  = alloc_vector(4*NN);
+
+  if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
+  
+  fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
+  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
+
+  /* allocate variables for NUFFT */
+
+  weight = alloc_vector(M);
+  
+  yAx_r = alloc_vector(M);
+  yAx_i = alloc_vector(M);
 
   /* allocate variables */ 
 
@@ -112,24 +375,14 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   /* preparation for TV */
 
-  ones  = alloc_vector(NN);
-  for(i = 0; i < NN; ++i) ones[i]=1;
+  pmat = alloc_matrix(Nx-1,Ny);
+  qmat = alloc_matrix(Nx,Ny-1);
 
-  pmat = alloc_matrix(NX-1,NY);
-  qmat = alloc_matrix(NX,NY-1);
+  npmat = alloc_matrix(Nx-1,Ny);
+  nqmat = alloc_matrix(Nx,Ny-1);
 
-  npmat = alloc_matrix(NX-1,NY);
-  nqmat = alloc_matrix(NX,NY-1);
-
-  rmat = alloc_matrix(NX-1,NY);
-  smat = alloc_matrix(NX,NY-1);
-
-  /* complex malloc */
-
-  yAx       = alloc_complex_vector(M);
-  wvis      = alloc_complex_vector(M);
-  weight    = alloc_complex_vector(M);
-  tmp_c_vec = alloc_complex_vector(NN);
+  rmat = alloc_matrix(Nx-1,Ny);
+  smat = alloc_matrix(Nx,Ny-1);
 
   /* initialize xvec */
   
@@ -138,42 +391,45 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   c = *cinit;
 
-  for(i=0;i<M;++i){
-    wvis[i] = (double complex) vis[i]/vis_std[i];
-    weight[i] = (double complex) 1/vis_std[i];
-  }
+  for(i = 0; i < M; ++i) weight[i] = 1/vis_std[i];
 
   /* main */
 
-  costtmp = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, xout, tmp_c_vec);
+  costtmp = calc_F_part_nufft(yAx_r, yAx_i, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			      rvec, cvec, dzeros, &fftwplan_r2c,
+			      vis_r, vis_i, weight, xout);
 
   l1cost = dasum_(&NN, xout, &inc);
   costtmp += lambda_l1*l1cost;
 
-  tvcost = TV(NX, NY, xout);
+  tvcost = TV(Nx, Ny, xout);
   costtmp += lambda_tv*tvcost;
 
-  for(iter=0; iter<maxiter; iter++){
+  for(iter = 0; iter < maxiter; iter++){
 
     cost[iter] = costtmp;
 
-    /*if((iter % 100) == 0)*/ printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
+    if((iter % 10) == 0) printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
 
-    Qcore = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, zvec, tmp_c_vec);
+    Qcore = calc_F_part_nufft(yAx_r, yAx_i, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			      rvec, cvec, dzeros, &fftwplan_r2c,
+			      vis_r, vis_i, weight, zvec);
 
-    dF_dx_nufft(dfdx, M, NX, NY, u_dx, v_dy, yAx, weight, tmp_c_vec);
-            
-    for(i=0; i<maxiter; i++){
+    dF_dx_nufft(dfdx, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+		cvec, rvec, &fftwplan_c2r, weight, yAx_r, yAx_i);
+
+
+    for(i = 0; i < maxiter; i++){
 
       if(nonneg_flag == 1){
-	dcopy_(&NN, ones, &inc, xtmp, &inc);
+	for(j = 0; j < NN; ++j) xtmp[j]=1;
 	tmpa = -lambda_l1/c;
 	dscal_(&NN, &tmpa, xtmp, &inc);
 	tmpa = 1/c;
 	daxpy_(&NN, &tmpa, dfdx, &inc, xtmp, &inc);
 	daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
 
-	FGP_nonneg_box(&NN, NX, NY, xtmp, lambda_tv/c, FGPITER,
+	FGP_nonneg_box(&NN, Nx, Ny, xtmp, lambda_tv/c, FGPITER,
 		       pmat, qmat, rmat, smat, npmat, nqmat, xnew,
 		       box_flag, cl_box);
       }
@@ -183,13 +439,16 @@ int mfista_L1_TV_core_nufft(double *xout,
 	dscal_(&NN, &tmpa, xtmp, &inc);
 	daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
 
-	FGP_L1_box(&NN, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
+	FGP_L1_box(&NN, Nx, Ny, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
 		   pmat, qmat, rmat, smat, npmat, nqmat, xnew,
 		   box_flag, cl_box);
       }
 
-      Fval = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, xnew, tmp_c_vec);
+      Fval = calc_F_part_nufft(yAx_r, yAx_i,
+			       M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			       rvec, cvec, dzeros, &fftwplan_r2c, vis_r, vis_i, weight, xnew);
 
+      
       Qval = calc_Q_part(&NN, xnew, zvec, c, dfdx, xtmp);
       Qval += Qcore;
 
@@ -205,7 +464,7 @@ int mfista_L1_TV_core_nufft(double *xout,
     l1cost = dasum_(&NN, xnew, &inc);
     Fval += lambda_l1*l1cost;
 
-    tvcost = TV(NX, NY, xnew);
+    tvcost = TV(Nx, Ny, xnew);
     Fval += lambda_tv*tvcost;
 
     if(Fval < cost[iter]){
@@ -252,9 +511,30 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   *cinit = c;
 
-  /* clear memory */
+  /* free NUFFT */
 
-  free(ones);
+  free(E1);
+  free(E2x);
+  free(E2y);
+  free(E3x);
+  free(E3y);
+  free(E4mat);
+  free(mx);
+  free(my);
+
+  free(cvec);
+  free(rvec);
+  free(dzeros);
+
+  fftw_destroy_plan(fftwplan_c2r);
+  fftw_destroy_plan(fftwplan_r2c);
+
+  free(weight);
+
+  free(yAx_r);
+  free(yAx_i);
+
+  /* clear memory */
 
   free(npmat);
   free(nqmat);
@@ -269,39 +549,65 @@ int mfista_L1_TV_core_nufft(double *xout,
   free(xtmp);
   free(zvec);
 
-  free(yAx);
-  free(wvis);
-  free(weight);
-  free(tmp_c_vec);
-
   return(iter+1);
 }
 
 /* TSV */
 
 int mfista_L1_TSV_core_nufft(double *xout,
-			     int M, int NX, int NY, double *u_dx, double *v_dy,
+			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
 			     int maxiter, double eps,
-			     double complex *vis, double *vis_std,
+			     double *vis_r, double *vis_i, double *vis_std,
 			     double lambda_l1, double lambda_tsv,
 			     double *cinit, double *xinit, 
 			     int nonneg_flag, int box_flag, float *cl_box)
 {
   void (*soft_th_box)(double *vector, int length, double eta, double *newvec,
 		      int box_flag, float *cl_box);
-  int NN, i, iter, inc = 1;
-  double *xtmp, *xnew, *zvec, *dfdx, *dtmp,
-    Qcore, Fval, Qval, c, cinv, tmpa, l1cost, tsvcost, costtmp, *cost,
-    mu=1, munew, alpha = 1, beta = -lambda_tsv;
-  double complex *yAx, *tmp_c_vec, *wvis, *weight;
+  int NN = Nx*Ny, MMh = 2*Nx*(Ny+1), i, iter, inc = 1, *mx, *my;
+  double Qcore, Fval, Qval, c, cinv, tmpa, l1cost, tsvcost, costtmp, 
+    mu=1, munew, alpha = 1, beta = -lambda_tsv,
+    *weight, *yAx_r, *yAx_i, *E1, *E2x, *E2y, *E3x, *E3y, *E4mat, *rvec, *dzeros,
+    *cost, *xtmp, *xnew, *zvec, *dfdx, *dtmp;
+  fftw_complex *cvec;
+  fftw_plan fftwplan_c2r, fftwplan_r2c;
+  unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
   /* set parameters */
-
-  NN = NX*NY;
 
   printf("computing image with MFISTA with NUFFT.\n");
 
   printf("stop if iter = %d, or Delta_cost < %e\n", maxiter, eps);
+
+  /* prepare for nufft */
+
+  E1  = alloc_vector(M);
+  E2x = alloc_vector(2*MSP*M);
+  E2y = alloc_vector(2*MSP*M);
+  E3x = alloc_vector(MSP+1);
+  E3y = alloc_vector(MSP+1);
+  E4mat = alloc_vector(NN);
+  mx  = alloc_int_vector(M);
+  my  = alloc_int_vector(M);
+
+  preNUFFT(E1, E2x, E2y, E3x, E3y, E4mat, mx, my, u_dx, v_dy, M, Nx, Ny);
+
+  /* for fftw */
+  
+  cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
+  rvec  = alloc_vector(4*NN);
+  
+  if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
+  
+  fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
+  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
   /* allocate variables */
 
@@ -311,14 +617,14 @@ int mfista_L1_TSV_core_nufft(double *xout,
   xtmp   = alloc_vector(NN);
   zvec   = alloc_vector(NN);
   dtmp   = alloc_vector(NN);
- 
-  /* complex malloc */
 
-  yAx       = alloc_complex_vector(M);
-  wvis      = alloc_complex_vector(M);
-  weight    = alloc_complex_vector(M);
-  tmp_c_vec = alloc_complex_vector(NN);
+  /* allocate variables for NUFFT */
 
+  weight = alloc_vector(M);
+  
+  yAx_r = alloc_vector(M);
+  yAx_i = alloc_vector(M);
+  
   /* initialization */
 
   if(nonneg_flag == 0)
@@ -335,20 +641,19 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   c = *cinit;
 
-  for(i=0;i<M;++i){
-    wvis[i] = (double complex) vis[i]/vis_std[i];
-    weight[i] = (double complex) 1/vis_std[i];
-  }
+  for(i = 0; i < M; ++i) weight[i] = 1/vis_std[i];
 
   /* main */
 
-  costtmp = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, xout, tmp_c_vec);
+  costtmp = calc_F_part_nufft(yAx_r, yAx_i,
+			      M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			      rvec, cvec, dzeros, &fftwplan_r2c, vis_r, vis_i, weight, xout);
 
   l1cost = dasum_(&NN, xout, &inc);
   costtmp += lambda_l1*l1cost;
 
   if( lambda_tsv > 0 ){
-    tsvcost = TSV(NX, NY, xout);
+    tsvcost = TSV(Nx, Ny, xout);
     costtmp += lambda_tsv*tsvcost;
   }
 
@@ -356,17 +661,21 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
     cost[iter] = costtmp;
 
-    if((iter % 10) == 0) printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
+    if((iter % 10) == 0)
+      printf("%d cost = %f, c = %f \n",(iter+1), cost[iter], c);
 
-    Qcore = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, zvec, tmp_c_vec);
+    Qcore = calc_F_part_nufft(yAx_r, yAx_i,
+			      M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			      rvec, cvec, dzeros, &fftwplan_r2c, vis_r, vis_i, weight, zvec);
 
-    dF_dx_nufft(dfdx, M, NX, NY, u_dx, v_dy, yAx, weight, tmp_c_vec);
+    dF_dx_nufft(dfdx, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+		cvec, rvec, &fftwplan_c2r, weight, yAx_r, yAx_i);
 
     if( lambda_tsv > 0.0 ){
-      tsvcost = TSV(NX, NY, zvec);
+      tsvcost = TSV(Nx, Ny, zvec);
       Qcore += lambda_tsv*tsvcost;
 
-      d_TSV(NX, NY, zvec, dtmp);
+      d_TSV(Nx, Ny, zvec, dtmp);
       dscal_(&NN, &beta, dtmp, &inc);
       daxpy_(&NN, &alpha, dtmp, &inc, dfdx, &inc);
     }
@@ -378,10 +687,12 @@ int mfista_L1_TSV_core_nufft(double *xout,
       daxpy_(&NN, &alpha, zvec, &inc, xtmp, &inc);
       soft_th_box(xtmp, NN, lambda_l1/c, xnew, box_flag, cl_box);
 
-      Fval = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, xnew, tmp_c_vec);
+      Fval = calc_F_part_nufft(yAx_r, yAx_i,
+			       M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			       rvec, cvec, dzeros, &fftwplan_r2c, vis_r, vis_i, weight, xnew);
 
       if( lambda_tsv > 0.0 ){
-	tsvcost = TSV(NX, NY, xnew);
+	tsvcost = TSV(Nx, Ny, xnew);
 	Fval += lambda_tsv*tsvcost;
       }
 
@@ -444,6 +755,27 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   /* free */
   
+  free(E1);
+  free(E2x);
+  free(E2y);
+  free(E3x);
+  free(E3y);
+  free(E4mat);
+  free(mx);
+  free(my);
+
+  free(cvec);
+  free(rvec);
+  free(dzeros);
+
+  fftw_destroy_plan(fftwplan_c2r);
+  fftw_destroy_plan(fftwplan_r2c);
+
+  free(weight);
+
+  free(yAx_r);
+  free(yAx_i);
+
   free(cost);
   free(dfdx);
   free(xnew);
@@ -451,41 +783,64 @@ int mfista_L1_TSV_core_nufft(double *xout,
   free(zvec);
   free(dtmp);
 
-  free(yAx);
-  free(tmp_c_vec);
-  free(wvis);
-  free(weight);
-
   return(iter+1);
 }
 
 /* results */
 
-void calc_result_nufft(int M, int NX, int NY, double *u_dx, double *v_dy,
-		       double complex *vis, double *vis_std,
+void calc_result_nufft(struct RESULT *mfista_result,
+		       int M, int Nx, int Ny, double *u_dx, double *v_dy,
+		       double *vis_r, double *vis_i, double *vis_std,
 		       double lambda_l1, double lambda_tv, double lambda_tsv, 
-		       double *xvec,
-		       struct RESULT *mfista_result)
+		       double *xvec)
 {
-  int i, NN = NX*NY;
-  double tmp;
-  double complex *yAx, *tmp_c_vec, *wvis, *weight;
+  int i, NN = Nx*Ny, *mx, *my;
+  double tmp, *yAx_r, *yAx_i, *weight, *E1, *E2x, *E2y, *E3x, *E3y, *E4mat, *rvec, *dzeros;
+  fftw_complex *cvec;
+  fftw_plan fftwplan_r2c;
+  unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
+
+  /* prepare for nufft */
+
+  E1  = alloc_vector(M);
+  E2x = alloc_vector(2*MSP*M);
+  E2y = alloc_vector(2*MSP*M);
+  E3x = alloc_vector(MSP+1);
+  E3y = alloc_vector(MSP+1);
+  E4mat = alloc_vector(NN);
+  mx  = alloc_int_vector(M);
+  my  = alloc_int_vector(M);
+
+  preNUFFT(E1, E2x, E2y, E3x, E3y, E4mat, mx, my, u_dx, v_dy, M, Nx, Ny);
+
+  /* for fftw */
+  
+  cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
+  rvec  = alloc_vector(4*NN);
+    if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
+
+  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
   /* complex malloc */
 
-  yAx       = alloc_complex_vector(M);
-  wvis      = alloc_complex_vector(M);
-  weight    = alloc_complex_vector(M);
-  tmp_c_vec = alloc_complex_vector(NN);
+  yAx_r     = alloc_vector(M);
+  yAx_i     = alloc_vector(M);
+  weight    = alloc_vector(M);
 
-  for(i=0;i<M;++i){
-    wvis[i] = (double complex) vis[i]/vis_std[i];
-    weight[i] = (double complex) 1/vis_std[i];
-  }
+  for(i = 0; i < M; ++i) weight[i] = 1/vis_std[i];
 
   /* computing results */
   
-  tmp = calc_F_part_nufft(yAx, M, NX, NY, u_dx, v_dy, wvis, weight, xvec, tmp_c_vec);
+  tmp = calc_F_part_nufft(yAx_r, yAx_i,
+			  M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat, mx, my,
+			  rvec, cvec, dzeros, &fftwplan_r2c, vis_r, vis_i, weight, xvec);
 
   /* saving results */
 
@@ -493,8 +848,8 @@ void calc_result_nufft(int M, int NX, int NY, double *u_dx, double *v_dy,
 
   mfista_result->M  = (int)(M/2);
   mfista_result->N  = NN;
-  mfista_result->NX = NX;
-  mfista_result->NY = NY;
+  mfista_result->NX = Nx;
+  mfista_result->NY = Ny;
 	    
   mfista_result->lambda_l1  = lambda_l1;
   mfista_result->lambda_tv  = lambda_tv;
@@ -519,54 +874,65 @@ void calc_result_nufft(int M, int NX, int NY, double *u_dx, double *v_dy,
     mfista_result->finalcost += lambda_l1*(mfista_result->l1cost);
 
   if(lambda_tsv > 0){
-    mfista_result->tsvcost = TSV(NX, NY, xvec);
+    mfista_result->tsvcost = TSV(Nx, Ny, xvec);
     mfista_result->finalcost += lambda_tsv*(mfista_result->tsvcost);
   }
   else if (lambda_tv > 0){
-    mfista_result->tvcost = TV(NX, NY, xvec);
+    mfista_result->tvcost = TV(Nx, Ny, xvec);
     mfista_result->finalcost += lambda_tv*(mfista_result->tvcost);
   }
 
   /* free */
-  
-  free(yAx);
-  free(wvis);
+
+  free(E1);
+  free(E2x);
+  free(E2y);
+  free(E3x);
+  free(E3y);
+  free(E4mat);
+  free(mx);
+  free(my);
+
+  free(cvec);
+  free(rvec);
+  free(dzeros);
+
+  fftw_destroy_plan(fftwplan_r2c);
+
+  free(yAx_r);
+  free(yAx_i);
   free(weight);
-  free(tmp_c_vec);
 }
 
 /* main subroutine */
 
 void mfista_imaging_core_nufft(double *u_dx, double *v_dy, 
 			       double *vis_r, double *vis_i, double *vis_std,
-			       int M, int NX, int NY, int maxiter, double eps,
+			       int M, int Nx, int Ny, int maxiter, double eps,
 			       double lambda_l1, double lambda_tv, double lambda_tsv,
 			       double cinit, double *xinit, double *xout,
 			       int nonneg_flag, int box_flag, float *cl_box,
 			       struct RESULT *mfista_result)
 {
-  int i, iter = 0;
+  int iter = 0, Ml = M, inc = 1;
   double epsilon, s_t, e_t, c = cinit;
   struct timespec time_spec1, time_spec2;
-  double complex *vis;
 
-  vis = alloc_complex_vector(M);
+  /* start main part */
 
-  for(epsilon=0, i=0;i<M;++i){
-    epsilon += vis_r[i]*vis_r[i] + vis_i[i]*vis_i[i];
-    vis[i] = vis_r[i] + vis_i[i]*I;
-  }
+  epsilon  = ddot_(&Ml, vis_r, &inc, vis_r, &inc);
+  epsilon += ddot_(&Ml, vis_i, &inc, vis_i, &inc);
     
   epsilon *= eps/((double)M);
 
   get_current_time(&time_spec1);
 
   if( lambda_tv == 0 ){
-    iter = mfista_L1_TSV_core_nufft(xout, M, NX, NY, u_dx, v_dy, maxiter, epsilon, vis, vis_std,
+    iter = mfista_L1_TSV_core_nufft(xout, M, Nx, Ny, u_dx, v_dy, maxiter, epsilon, vis_r, vis_i, vis_std,
 				    lambda_l1, lambda_tsv, &c, xinit, nonneg_flag, box_flag, cl_box);
   }
   else if( lambda_tv != 0  && lambda_tsv == 0 ){
-    iter = mfista_L1_TV_core_nufft(xout, M, NX, NY, u_dx, v_dy, maxiter, epsilon, vis, vis_std,
+    iter = mfista_L1_TV_core_nufft(xout, M, Nx, Ny, u_dx, v_dy, maxiter, epsilon, vis_r, vis_i, vis_std,
 				   lambda_l1, lambda_tv, &c, xinit, nonneg_flag, box_flag, cl_box);
   }
   else{
@@ -585,8 +951,7 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
   mfista_result->Lip_const = c;
   mfista_result->maxiter   = maxiter;
 
-  calc_result_nufft(M, NX, NY, u_dx, v_dy, vis, vis_std, lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
+  calc_result_nufft(mfista_result, M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std,
+		    lambda_l1, lambda_tv, lambda_tsv, xout);
 
-  free(vis);
 }
-
