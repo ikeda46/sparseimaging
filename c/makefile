@@ -31,6 +31,8 @@ object_tools2 = mfista_tools.o2
 object_nufft2 = mfista_TV_lib.o2 mfista_nufft_lib.o2
 object_fft2 = mfista_TV_lib.o2 mfista_fft_lib.o2
 
+object_dft = mfista_TV_lib.o mfista_dft_lib.o
+
 all: $(targets)
 
 mfista_imaging_nufft: mfista_imaging_nufft.o $(object_io) $(object_nufft) $(object_tools)
@@ -38,6 +40,9 @@ mfista_imaging_nufft: mfista_imaging_nufft.o $(object_io) $(object_nufft) $(obje
 
 mfista_imaging_fft: mfista_imaging_fft.o $(object_io) $(object_fft) $(object_tools)
 	$(CC) $(CFLAGS) $(object_io) $(object_fft) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW) -o $@
+
+mfista_imaging_dft: mfista_imaging_dft.o $(object_io) $(object_dft) $(object_tools)
+	$(CC) $(CFLAGS) $(object_io) $(object_dft) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW) -o $@
 
 libraries: libmfista_fft libmfista_nufft
 

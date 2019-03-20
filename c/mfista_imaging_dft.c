@@ -27,7 +27,7 @@
 
 void usage(char *s)
 {
-  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-looe} {-nonneg} {-cl_box box_fname} {-log log_fname}\n\n",s);
+  printf("%s <int m> <intl n> <V fname> <A fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-t} {-rec NX} {-nonneg} {-cl_box box_fname} {-log log_fname}\n\n",s);
   printf("  <int m>: number of row of A.\n");
   printf("  <int n>: number of column of A.\n");
   printf("  <V fname>: file name of V.\n");
@@ -46,7 +46,7 @@ void usage(char *s)
   printf("             NX is the length of one dimension of the image.\n");
   printf("  {-maxiter N}: maximum number of iteration.\n");
   printf("  {-eps epsilon}: epsilon used to check the convergence.\n");
-  printf("  {-looe}: Compute approximation of LOOE.\n");
+  /*  printf("  {-looe}: Compute approximation of LOOE.\n");*/
   printf("  {-nonneg}: Use this if x is nonnegative.\n");
   printf("  {-cl_box box_fname}: file name of CLEAN box data (float).\n");  
   printf("  {-log log_fname}: Specify log file.\n\n");
@@ -217,9 +217,9 @@ int main(int argc, char *argv[])
 
   /* main calculation */
   
-  mfista_imaging_core(y, A, &M, &N, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv,
-		      cinit, xinit, xvec, nonneg_flag, looe_flag, box_flag, cl_box,
-		      &mfista_result);
+  mfista_imaging_core_dft(y, A, &M, &N, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv,
+			  cinit, xinit, xvec, nonneg_flag, looe_flag, box_flag, cl_box,
+			  &mfista_result);
 
   /* post processing */
 

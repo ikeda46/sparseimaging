@@ -146,6 +146,16 @@ extern void FGP_nonneg_box(int *N, int NX, int NY,
 			   double *npmat, double *nqmat, double *xvec,
 			   int box_flag, float *cl_box);
 
+/* for mfista_imaging_dft */
+
+extern void mfista_imaging_core_dft(double *y, double *A, 
+				    int *M, int *N, int NX, int NY, int maxiter, double eps,
+				    double lambda_l1, double lambda_tv, double lambda_tsv,
+				    double cinit, double *xinit, double *xout,
+				    int nonneg_flag, int looe_flag,
+				    int box_flag, float *cl_box,
+				    struct RESULT *mfista_result);
+
 /* for mfista_imaging_fft */
 
 extern void mfista_imaging_core_fft(int *u_idx, int *v_idx,

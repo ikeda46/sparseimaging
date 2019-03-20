@@ -505,6 +505,7 @@ void calc_result(double *yvec, double *Amat,
 
   /* computing LOOE */
 
+  /*
   if(looe_flag == 1 && lambda_tv ==0 ){
     if(lambda_tsv == 0){
       mfista_result->looe_m = compute_LOOE_L1(M, N, lambda_l1, yvec, Amat, xvec, yAx,
@@ -527,6 +528,7 @@ void calc_result(double *yvec, double *Amat,
     mfista_result->looe_m = 0;
     mfista_result->Hessian_positive = -1;
   }
+  */
 
   /* clear memory */
   
@@ -535,13 +537,13 @@ void calc_result(double *yvec, double *Amat,
 
 /* main subroutine */
 
-void mfista_imaging_core(double *y, double *A, 
-			 int *M, int *N, int NX, int NY, int maxiter, double eps,
-			 double lambda_l1, double lambda_tv, double lambda_tsv,
-			 double cinit, double *xinit, double *xout,
-			 int nonneg_flag, int looe_flag,
-			 int box_flag, float *cl_box,
-			 struct RESULT *mfista_result)
+void mfista_imaging_core_dft(double *y, double *A, 
+			     int *M, int *N, int NX, int NY, int maxiter, double eps,
+			     double lambda_l1, double lambda_tv, double lambda_tsv,
+			     double cinit, double *xinit, double *xout,
+			     int nonneg_flag, int looe_flag,
+			     int box_flag, float *cl_box,
+			     struct RESULT *mfista_result)
 {
   double s_t, e_t, c = cinit;
   int    iter = 0, inc = 1;
