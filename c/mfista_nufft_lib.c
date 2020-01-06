@@ -24,6 +24,8 @@
 */ 
 #include "mfista.h"
 
+#include <assert.h>
+
 #define NU_SIGN -1
 #define MSP 12
 
@@ -343,7 +345,9 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   /* for fftw */
   
-  cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
+  //cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
+  assert(sizeof(fftw_complex) == 2 * sizeof(double));
+  cvec  = (fftw_complex*) alloc_vector(2*MMh);
   rvec  = alloc_vector(4*NN);
 
   if(4*NN > M){
@@ -815,7 +819,9 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   /* for fftw */
   
-  cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
+  //cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
+  assert(sizeof(fftw_complex) == 2 * sizeof(double));
+  cvec = (fftw_complex*) alloc_vector(2*2*Nx*(Ny+1));
   rvec  = alloc_vector(4*NN);
     if(4*NN > M){
     dzeros= alloc_vector(4*NN);
