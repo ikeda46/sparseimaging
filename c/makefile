@@ -16,7 +16,7 @@ CC=gcc
 # CLIBS_FFTW = -lfftw3 
 
 # use the following two lines to enable PTHREAD choose the thread_num properly.
-CFLAGS=-O2 -DPTHREAD -DTHREAD_NUM=4
+CFLAGS=-O3 -DPTHREAD -DTHREAD_NUM=4
 CLIBS_FFTW = -lfftw3_threads -lfftw3
 
 CLIBS= -lopenblas -lm -lrt -lpthread
@@ -53,10 +53,10 @@ libmfista_fft: $(object_tools2) $(object_fft2)
 	$(CC) $(CFLAGS) -shared $(object_fft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW) -Xlinker -rpath -Xlinker /usr/lib
 
 .c.o:
-	$(CC) -c -O2 -Wall $(CFLAGS) -o $@ $<
+	$(CC) -c -Wall $(CFLAGS) -o $@ $<
 
 .c.o2:
-	$(CC) -c -O2 -Wall -fPIC $(CFLAGS) -o $@ $<
+	$(CC) -c -Wall -fPIC $(CFLAGS) -o $@ $<
 
 clean:
 	rm -f $(targets) *.o *.o2 *.so
