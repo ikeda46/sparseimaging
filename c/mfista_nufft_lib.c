@@ -193,6 +193,7 @@ void NUFFT2d2(double *Fout_r, double *Fout_i,
 {
   int i, j, k, lx, ly, Mrx, Mry, Mh, idx, idy;
   double f_r, tmp, MM;
+  double accr, acci;
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
@@ -215,14 +216,17 @@ void NUFFT2d2(double *Fout_r, double *Fout_i,
 
       idy = idx_fftw((my[k]+ly),Mry);
       
+      accr = 0;
+      acci = 0;
+
       if(idy < (Ny+1)){
 	for(lx = (-MSP+1); lx <= MSP; ++lx){
 
 	  idx = idx_fftw((mx[k]+lx),Mrx);
-	  tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
+	  tmp = E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)];
 
-	  Fout_r[k] +=           creal(out[idx*Mh + idy])*tmp;
-	  Fout_i[k] += (NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
+	  accr +=           creal(out[idx*Mh + idy])*tmp;
+	  acci += (NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
 	}
       }
 
@@ -232,12 +236,15 @@ void NUFFT2d2(double *Fout_r, double *Fout_i,
 	if(idy < (Ny+1)) for(lx = (-MSP+1); lx <= MSP; ++lx){
 	    
 	    idx = idx_fftw(-(mx[k]+lx),Mrx);
-	    tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
+	    tmp = E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)];
 	    
-	    Fout_r[k] +=            creal(out[idx*Mh + idy])*tmp;
-	    Fout_i[k] += -(NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
+	    accr +=            creal(out[idx*Mh + idy])*tmp;
+	    acci += -(NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
 	  }
       }
+
+      Fout_r[k] = f_r * accr / MM;
+      Fout_i[k] = f_r * acci / MM;
     }
 
 }
