@@ -273,12 +273,17 @@ double calc_F_part_nufft(double *yAx_r, double *yAx_i,
 {
   int inc = 1, Ml = M, MM = 4*Nx*Ny;
   double chisq;
+  int i;
 
   /* initializaton for nufft */
-
-  dcopy_(&MM, dzeros, &inc, in_r, &inc);
-  dcopy_(&Ml, dzeros, &inc, yAx_r, &inc);
-  dcopy_(&Ml, dzeros, &inc, yAx_i, &inc);
+  /* replaced dcopy_ with simple loop */
+  for (i = 0; i < MM; ++i) {
+    in_r[i] = 0;
+  }
+  for (i = 0; i < Ml; ++i) {
+    yAx_r[i] = 0;
+    yAx_i[i] = 0;
+  }
 
   /* nufft */
   
@@ -357,14 +362,8 @@ int mfista_L1_TV_core_nufft(double *xout,
   cvec  = (fftw_complex*) alloc_vector(2*MMh);
   rvec  = alloc_vector(4*NN);
 
-  if(4*NN > M){
-    dzeros= alloc_vector(4*NN);
-    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
-  }
-  else{
-    dzeros= alloc_vector(M);
-    for(i = 0; i < M; ++i) dzeros[i] = 0;
-  }
+  // do not allocate dzeros for memory efficiency
+  dzeros = NULL;
   
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
@@ -535,7 +534,6 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   free(cvec);
   free(rvec);
-  free(dzeros);
 
   fftw_destroy_plan(fftwplan_c2r);
   fftw_destroy_plan(fftwplan_r2c);
@@ -608,15 +606,9 @@ int mfista_L1_TSV_core_nufft(double *xout,
   cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
   rvec  = alloc_vector(4*NN);
   
-  if(4*NN > M){
-    dzeros= alloc_vector(4*NN);
-    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
-  }
-  else{
-    dzeros= alloc_vector(M);
-    for(i = 0; i < M; ++i) dzeros[i] = 0;
-  }
-  
+  // do not allocate dzeros for memory efficiency
+  dzeros = NULL;
+
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
@@ -777,7 +769,6 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   free(cvec);
   free(rvec);
-  free(dzeros);
 
   fftw_destroy_plan(fftwplan_c2r);
   fftw_destroy_plan(fftwplan_r2c);
@@ -830,14 +821,9 @@ void calc_result_nufft(struct RESULT *mfista_result,
   assert(sizeof(fftw_complex) == 2 * sizeof(double));
   cvec = (fftw_complex*) alloc_vector(2*2*Nx*(Ny+1));
   rvec  = alloc_vector(4*NN);
-    if(4*NN > M){
-    dzeros= alloc_vector(4*NN);
-    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
-  }
-  else{
-    dzeros= alloc_vector(M);
-    for(i = 0; i < M; ++i) dzeros[i] = 0;
-  }
+
+  // do not allocate dzeros for memory efficiency
+  dzeros = NULL;
 
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
@@ -908,7 +894,6 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   free(cvec);
   free(rvec);
-  free(dzeros);
 
   fftw_destroy_plan(fftwplan_r2c);
 
