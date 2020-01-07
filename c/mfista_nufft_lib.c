@@ -243,8 +243,8 @@ void NUFFT2d2(double *Fout_r, double *Fout_i,
 	  }
       }
 
-      Fout_r[k] = f_r * accr / MM;
-      Fout_i[k] = f_r * acci / MM;
+      Fout_r[k] += f_r * accr / MM;
+      Fout_i[k] += f_r * acci / MM;
     }
 
 }
