@@ -29,44 +29,33 @@
 #include <sys/time.h>
 #endif
 
-int *alloc_int_vector(int length)
-{
+void *_aligned_malloc(size_t size) {
   void *p = NULL;
-  if (posix_memalign(&p, ALIGNMENT, sizeof(int)*length)) {
+  if (posix_memalign(&p, ALIGNMENT, size)) {
     return NULL;
   }
-  return (int *)p;
-  // return malloc(sizeof(int)*length);
+  return p;
+}
+
+int *alloc_int_vector(int length)
+{
+  return _aligned_malloc(sizeof(int)*length);
 }
 
 float *alloc_f_vector(int length)
 {
   void *p = NULL;
-  if (posix_memalign(&p, ALIGNMENT, sizeof(float)*length)) {
-    return NULL;
-  }
-  return (float *)p;
-  // return malloc(sizeof(float)*length);
+  return _aligned_malloc(sizeof(float)*length);
 }
 
 double *alloc_vector(int length)
 {
-  void *p = NULL;
-  if (posix_memalign(&p, ALIGNMENT, sizeof(double)*length)) {
-    return NULL;
-  }
-  return (double *)p;
-  //return malloc(sizeof(double)*length);
+  return _aligned_malloc(sizeof(double)*length);
 }
 
 double *alloc_matrix(int height, int width)
 {
-  void *p = NULL;
-  if (posix_memalign(&p, ALIGNMENT, sizeof(double)*height*width)) {
-    return NULL;
-  }
-  return (double *)p;
-  //return malloc(sizeof(double) * height * width);
+  return _aligned_malloc(sizeof(double) * height * width);
 }
 
 void clear_matrix(double *matrix, int height, int width)
