@@ -16,7 +16,7 @@ CC=gcc
 # CLIBS_FFTW = -lfftw3 
 
 # use the following two lines to enable PTHREAD choose the thread_num properly.
-CFLAGS=-O3 -DPTHREAD -DTHREAD_NUM=4 -march=native -fopt-info-all
+CFLAGS=-O3 -DPTHREAD -DTHREAD_NUM=4 -march=native -mtune=native -fopt-info-all
 CLIBS_FFTW = -lfftw3_threads -lfftw3
 
 CLIBS= -lopenblas -lm -lrt -lpthread
