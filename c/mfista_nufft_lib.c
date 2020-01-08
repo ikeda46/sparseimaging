@@ -154,9 +154,9 @@ void NUFFT2d1(double * RESTRICT Xout,
   double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
   double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
   double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
-  double *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
+  fftw_complex *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
   double *Xout_a = ASSUME_ALIGNED(Xout, ALIGNMENT); 
-  fftw_complex *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
+  double *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
   int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
   int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
