@@ -29,8 +29,8 @@
 #define NU_SIGN -1
 #define MSP 12
 
-#define RESTRICT /*restrict*/
-#define ASSUME_ALIGNED(p, a) (p)/*__builtin_assume_aligned((p), (a))*/
+#define RESTRICT restrict
+#define ASSUME_ALIGNED(p, a) __builtin_assume_aligned((p), (a))
 
 /* nufft */
 
