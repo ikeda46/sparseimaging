@@ -29,26 +29,33 @@
 #include <sys/time.h>
 #endif
 
-/* memory allocation of matrix and vectors */
+void *_aligned_malloc(size_t size) {
+  void *p = NULL;
+  if (posix_memalign(&p, ALIGNMENT, size)) {
+    return NULL;
+  }
+  return p;
+}
 
 int *alloc_int_vector(int length)
 {
-    return malloc(sizeof(int)*length);
+  return _aligned_malloc(sizeof(int)*length);
 }
 
 float *alloc_f_vector(int length)
 {
-    return malloc(sizeof(float)*length);
+  void *p = NULL;
+  return _aligned_malloc(sizeof(float)*length);
 }
 
 double *alloc_vector(int length)
 {
-    return malloc(sizeof(double)*length);
+  return _aligned_malloc(sizeof(double)*length);
 }
 
 double *alloc_matrix(int height, int width)
 {
-    return malloc(sizeof(double) * height * width);
+  return _aligned_malloc(sizeof(double) * height * width);
 }
 
 void clear_matrix(double *matrix, int height, int width)
