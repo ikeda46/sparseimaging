@@ -29,6 +29,9 @@
 #define NU_SIGN -1
 #define MSP 12
 
+#define RESTRICT /*restrict*/
+#define ASSUME_ALIGNED(p, a) (p)/*__builtin_assume_aligned((p), (a))*/
+
 /* nufft */
 
 int idx_fftw(int m, int Mr)
@@ -49,24 +52,24 @@ int m2mr(int id, int N)
     return(id - N/2);
 }
 
-void preNUFFT(double * restrict E1, double * restrict E2x, double * restrict E2y, double * restrict E3x, double * restrict E3y,
-	      double * restrict E4mat, int * restrict mx, int * restrict my,
-	      double * restrict u, double * restrict v, int M, int Nx, int Ny)
+void preNUFFT(double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
+	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
+	      double * RESTRICT u, double * RESTRICT v, int M, int Nx, int Ny)
 {
   int i, j, k, l;
   double taux, tauy, coeff, xix, xiy, Mrx, Mry,
     tmpx, tmpy, pi, powj, tmpi, tmpj;
 
-  double *E1_a = __builtin_assume_aligned(E1, ALIGNMENT); 
-  double *E2x_a = __builtin_assume_aligned(E2x, ALIGNMENT); 
-  double *E2y_a = __builtin_assume_aligned(E2y, ALIGNMENT); 
-  double *E3x_a = __builtin_assume_aligned(E3x, ALIGNMENT); 
-  double *E3y_a = __builtin_assume_aligned(E3y, ALIGNMENT); 
-  double *E4mat_a = __builtin_assume_aligned(E4mat, ALIGNMENT); 
-  double *u_a = __builtin_assume_aligned(u, ALIGNMENT); 
-  double *v_a = __builtin_assume_aligned(v, ALIGNMENT); 
-  int *mx_a = __builtin_assume_aligned(mx, ALIGNMENT); 
-  int *my_a = __builtin_assume_aligned(my, ALIGNMENT); 
+  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
+  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
+  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
+  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
+  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
+  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
+  double *u_a = ASSUME_ALIGNED(u, ALIGNMENT); 
+  double *v_a = ASSUME_ALIGNED(v, ALIGNMENT); 
+  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
+  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   pi = M_PI;
 
@@ -133,29 +136,29 @@ void preNUFFT(double * restrict E1, double * restrict E2x, double * restrict E2y
   }
 }
 
-void NUFFT2d1(double * restrict Xout,
+void NUFFT2d1(double * RESTRICT Xout,
 	      int M, int Nx, int Ny,
-	      double * restrict E1, double * restrict E2x, double * restrict E2y, double * restrict E3x, double * restrict E3y,
-	      double * restrict E4mat, int * restrict mx, int * restrict my,
-	      fftw_complex * restrict in, double * restrict out, fftw_plan *fftwplan_c2r,
-	      double * restrict Fin_r, double * restrict Fin_i)
+	      double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
+	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
+	      fftw_complex * RESTRICT in, double * RESTRICT out, fftw_plan *fftwplan_c2r,
+	      double * RESTRICT Fin_r, double * RESTRICT Fin_i)
 {
   int j, k, lx, ly, Mrx, Mry, idx, idy, Mh;
   double v0_r, v0_i, vy_r, vy_i, MM, tmp;
 
-  double *Fin_r_a = __builtin_assume_aligned(Fin_r, ALIGNMENT); 
-  double *Fin_i_a = __builtin_assume_aligned(Fin_i, ALIGNMENT); 
-  double *E1_a = __builtin_assume_aligned(E1, ALIGNMENT); 
-  double *E2x_a = __builtin_assume_aligned(E2x, ALIGNMENT); 
-  double *E2y_a = __builtin_assume_aligned(E2y, ALIGNMENT); 
-  double *E3x_a = __builtin_assume_aligned(E3x, ALIGNMENT); 
-  double *E3y_a = __builtin_assume_aligned(E3y, ALIGNMENT); 
-  double *E4mat_a = __builtin_assume_aligned(E4mat, ALIGNMENT); 
-  double *in_a = __builtin_assume_aligned(in, ALIGNMENT); 
-  double *Xout_a = __builtin_assume_aligned(Xout, ALIGNMENT); 
-  fftw_complex *out_a = __builtin_assume_aligned(out, ALIGNMENT); 
-  int *mx_a = __builtin_assume_aligned(mx, ALIGNMENT); 
-  int *my_a = __builtin_assume_aligned(my, ALIGNMENT); 
+  double *Fin_r_a = ASSUME_ALIGNED(Fin_r, ALIGNMENT); 
+  double *Fin_i_a = ASSUME_ALIGNED(Fin_i, ALIGNMENT); 
+  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
+  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
+  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
+  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
+  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
+  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
+  double *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
+  double *Xout_a = ASSUME_ALIGNED(Xout, ALIGNMENT); 
+  fftw_complex *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
+  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
+  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
@@ -211,30 +214,30 @@ void NUFFT2d1(double * restrict Xout,
   
 }
 
-void NUFFT2d2(double * restrict Fout_r, double * restrict Fout_i,
+void NUFFT2d2(double * RESTRICT Fout_r, double * RESTRICT Fout_i,
 	      int M, int Nx, int Ny,
-	      double * restrict E1, double * restrict E2x, double * restrict E2y, double * restrict E3x, double * restrict E3y,
-	      double * restrict E4mat, int * restrict mx, int * restrict my,
-	      double * restrict in, fftw_complex * restrict out, fftw_plan *fftwplan_r2c,
-	      double * restrict Xin)
+	      double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
+	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
+	      double * RESTRICT in, fftw_complex * RESTRICT out, fftw_plan *fftwplan_r2c,
+	      double * RESTRICT Xin)
 {
   int i, j, k, lx, ly, Mrx, Mry, Mh, idx, idy;
   double f_r, tmp, MM;
   double accr, acci;
 
-  double *Fout_r_a = __builtin_assume_aligned(Fout_r, ALIGNMENT); 
-  double *Fout_i_a = __builtin_assume_aligned(Fout_i, ALIGNMENT); 
-  double *E1_a = __builtin_assume_aligned(E1, ALIGNMENT); 
-  double *E2x_a = __builtin_assume_aligned(E2x, ALIGNMENT); 
-  double *E2y_a = __builtin_assume_aligned(E2y, ALIGNMENT); 
-  double *E3x_a = __builtin_assume_aligned(E3x, ALIGNMENT); 
-  double *E3y_a = __builtin_assume_aligned(E3y, ALIGNMENT); 
-  double *E4mat_a = __builtin_assume_aligned(E4mat, ALIGNMENT); 
-  double *in_a = __builtin_assume_aligned(in, ALIGNMENT); 
-  double *Xin_a = __builtin_assume_aligned(Xin, ALIGNMENT); 
-  fftw_complex *out_a = __builtin_assume_aligned(out, ALIGNMENT); 
-  int *mx_a = __builtin_assume_aligned(mx, ALIGNMENT); 
-  int *my_a = __builtin_assume_aligned(my, ALIGNMENT); 
+  double *Fout_r_a = ASSUME_ALIGNED(Fout_r, ALIGNMENT); 
+  double *Fout_i_a = ASSUME_ALIGNED(Fout_i, ALIGNMENT); 
+  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
+  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
+  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
+  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
+  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
+  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
+  double *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
+  double *Xin_a = ASSUME_ALIGNED(Xin, ALIGNMENT); 
+  fftw_complex *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
+  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
+  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
@@ -290,16 +293,16 @@ void NUFFT2d2(double * restrict Fout_r, double * restrict Fout_i,
 
 }
 
-void calc_yAx_nufft(double * restrict yAx_r, double * restrict yAx_i,
-		    int M, double * restrict vis_r, double * restrict vis_i, double * restrict weight)
+void calc_yAx_nufft(double * RESTRICT yAx_r, double * RESTRICT yAx_i,
+		    int M, double * RESTRICT vis_r, double * RESTRICT vis_i, double * RESTRICT weight)
 {
   int i;
 
-  double *yAx_r_a = __builtin_assume_aligned(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = __builtin_assume_aligned(yAx_i, ALIGNMENT); 
-  double *vis_r_a = __builtin_assume_aligned(vis_r, ALIGNMENT); 
-  double *vis_i_a = __builtin_assume_aligned(vis_i, ALIGNMENT); 
-  double *weight_a = __builtin_assume_aligned(weight, ALIGNMENT); 
+  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
+  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
+  double *vis_r_a = ASSUME_ALIGNED(vis_r, ALIGNMENT); 
+  double *vis_i_a = ASSUME_ALIGNED(vis_i, ALIGNMENT); 
+  double *weight_a = ASSUME_ALIGNED(weight, ALIGNMENT); 
 
   /* main */
 
@@ -309,20 +312,20 @@ void calc_yAx_nufft(double * restrict yAx_r, double * restrict yAx_i,
   }
 }
 
-double calc_F_part_nufft(double * restrict yAx_r, double * restrict yAx_i,
+double calc_F_part_nufft(double * RESTRICT yAx_r, double * RESTRICT yAx_i,
 			 int M, int Nx, int Ny,
-			 double * restrict E1, double * restrict E2x, double * restrict E2y,
-			 double * restrict E3x, double * restrict E3y, double * restrict E4mat, int * restrict mx, int * restrict my,
-			 double * restrict in_r, fftw_complex * restrict out_c, double * restrict dzeros, fftw_plan *fftwplan_r2c,
-			 double * restrict vis_r, double * restrict vis_i, double * restrict weight, double * restrict xvec)
+			 double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y,
+			 double * RESTRICT E3x, double * RESTRICT E3y, double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
+			 double * RESTRICT in_r, fftw_complex * RESTRICT out_c, double * RESTRICT dzeros, fftw_plan *fftwplan_r2c,
+			 double * RESTRICT vis_r, double * RESTRICT vis_i, double * RESTRICT weight, double * RESTRICT xvec)
 {
   int inc = 1, Ml = M, MM = 4*Nx*Ny;
   double chisq;
   int i;
 
-  double *yAx_r_a = __builtin_assume_aligned(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = __builtin_assume_aligned(yAx_i, ALIGNMENT); 
-  double *in_r_a = __builtin_assume_aligned(in_r, ALIGNMENT); 
+  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
+  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
+  double *in_r_a = ASSUME_ALIGNED(in_r, ALIGNMENT); 
 
   /* initializaton for nufft */
   /* replaced dcopy_ with simple loop */
@@ -347,18 +350,18 @@ double calc_F_part_nufft(double * restrict yAx_r, double * restrict yAx_i,
   return(chisq/2);
 }
 
-void dF_dx_nufft(double * restrict dFdx,
+void dF_dx_nufft(double * RESTRICT dFdx,
 		 int M, int Nx, int Ny,
-		 double * restrict E1, double * restrict E2x, double * restrict E2y, double * restrict E3x, double * restrict E3y,
-		 double * restrict E4mat, int * restrict mx, int * restrict my,
-		 fftw_complex * restrict in_c, double * restrict out_r, fftw_plan *fftwplan_c2r, double * restrict weight,
-		 double * restrict yAx_r, double * restrict yAx_i)
+		 double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
+		 double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
+		 fftw_complex * RESTRICT in_c, double * RESTRICT out_r, fftw_plan *fftwplan_c2r, double * RESTRICT weight,
+		 double * RESTRICT yAx_r, double * RESTRICT yAx_i)
 {
   int i;
 
-  double *yAx_r_a = __builtin_assume_aligned(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = __builtin_assume_aligned(yAx_i, ALIGNMENT); 
-  double *weight_a = __builtin_assume_aligned(weight, ALIGNMENT); 
+  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
+  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
+  double *weight_a = ASSUME_ALIGNED(weight, ALIGNMENT); 
 
   for(i = 0; i < M; ++i){
     yAx_r_a[i] *= weight_a[i];
