@@ -24,13 +24,8 @@
 */ 
 #include "mfista.h"
 
-#include <assert.h>
-
 #define NU_SIGN -1
 #define MSP 12
-
-#define RESTRICT restrict
-#define ASSUME_ALIGNED(p, a) __builtin_assume_aligned((p), (a))
 
 /* nufft */
 
@@ -52,24 +47,13 @@ int m2mr(int id, int N)
     return(id - N/2);
 }
 
-void preNUFFT(double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
-	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
-	      double * RESTRICT u, double * RESTRICT v, int M, int Nx, int Ny)
+void preNUFFT(double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      double *u, double *v, int M, int Nx, int Ny)
 {
   int i, j, k, l;
   double taux, tauy, coeff, xix, xiy, Mrx, Mry,
     tmpx, tmpy, pi, powj, tmpi, tmpj;
-
-  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
-  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
-  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
-  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
-  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
-  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
-  double *u_a = ASSUME_ALIGNED(u, ALIGNMENT); 
-  double *v_a = ASSUME_ALIGNED(v, ALIGNMENT); 
-  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
-  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   pi = M_PI;
 
@@ -85,8 +69,8 @@ void preNUFFT(double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y
   tmpy = pow((pi/Mry),2.0)/tauy;
 
   for(l = 0; l <= MSP; ++l){
-    E3x_a[l] = exp(-tmpx*((double)(l*l)));
-    E3y_a[l] = exp(-tmpy*((double)(l*l)));
+    E3x[l] = exp(-tmpx*((double)(l*l)));
+    E3y[l] = exp(-tmpy*((double)(l*l)));
   }
 
   for(i = 0 ; i < Nx; ++i){
@@ -97,7 +81,7 @@ void preNUFFT(double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y
     for(j = 0; j< Ny; ++j){
       tmpj = (double)(j-Nx/2);
       tmpy = tauy*tmpj*tmpj;
-      E4mat_a[Ny*i + j] = coeff*exp(tmpx + tmpy);
+      E4mat[Ny*i + j] = coeff*exp(tmpx + tmpy);
     }
   }
 
@@ -105,96 +89,82 @@ void preNUFFT(double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y
 
     /* mx, my, xix, xiy */
 
-    tmpx = round(u_a[k]*Mrx/(2*pi));
-    tmpy = round(v_a[k]*Mry/(2*pi));
+    tmpx = round(u[k]*Mrx/(2*pi));
+    tmpy = round(v[k]*Mry/(2*pi));
     
-    mx_a[k] = (int)tmpx;
-    my_a[k] = (int)tmpy;
+    mx[k] = (int)tmpx;
+    my[k] = (int)tmpy;
 
     xix = (2*pi*tmpx)/Mrx;
     xiy = (2*pi*tmpy)/Mry;
 
     /* E1 */
 
-    tmpx = -pow((u_a[k]-xix),2.0)/(4*taux);
-    tmpy = -pow((v_a[k]-xiy),2.0)/(4*tauy);
+    tmpx = -pow((u[k]-xix),2.0)/(4*taux);
+    tmpy = -pow((v[k]-xiy),2.0)/(4*tauy);
 
-    E1_a[k] = exp( tmpx + tmpy );
+    E1[k] = exp( tmpx + tmpy );
 
     /* E2 */
 
-    tmpx = pi*(u_a[k]-xix)/(Mrx*taux);
-    tmpy = pi*(v_a[k]-xiy)/(Mry*tauy);
+    tmpx = pi*(u[k]-xix)/(Mrx*taux);
+    tmpy = pi*(v[k]-xiy)/(Mry*tauy);
     
     powj = (double)(-MSP+1);
 
     for(j = 0; j < 2*MSP; ++j){
-      E2x_a[2*MSP*k + j] = exp(powj*tmpx);
-      E2y_a[2*MSP*k + j] = exp(powj*tmpy);
+      E2x[2*MSP*k + j] = exp(powj*tmpx);
+      E2y[2*MSP*k + j] = exp(powj*tmpy);
       powj += 1.0;
     }
   }
 }
 
-void NUFFT2d1(double * RESTRICT Xout,
+void NUFFT2d1(double *Xout,
 	      int M, int Nx, int Ny,
-	      double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
-	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
-	      fftw_complex * RESTRICT in, double * RESTRICT out, fftw_plan *fftwplan_c2r,
-	      double * RESTRICT Fin_r, double * RESTRICT Fin_i)
+	      double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      fftw_complex *in, double *out, fftw_plan *fftwplan_c2r,
+	      double *Fin_r, double *Fin_i)
 {
   int j, k, lx, ly, Mrx, Mry, idx, idy, Mh;
   double v0_r, v0_i, vy_r, vy_i, MM, tmp;
-
-  double *Fin_r_a = ASSUME_ALIGNED(Fin_r, ALIGNMENT); 
-  double *Fin_i_a = ASSUME_ALIGNED(Fin_i, ALIGNMENT); 
-  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
-  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
-  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
-  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
-  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
-  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
-  fftw_complex *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
-  double *Xout_a = ASSUME_ALIGNED(Xout, ALIGNMENT); 
-  double *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
-  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
-  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
   Mh  = Ny+1;
   MM  = (double)(Mrx*Mry);
   
-  for(j = 0; j < Mrx*Mh; ++j) in_a[j] = 0;
+  for(j = 0; j < Mrx*Mh; ++j) in[j] = 0;
 
   for(k = 0; k<M; ++k){
 
-    v0_r = Fin_r_a[k]*E1_a[k];
-    v0_i = (NU_SIGN)*Fin_i_a[k]*E1_a[k];
+    v0_r = Fin_r[k]*E1[k];
+    v0_i = (NU_SIGN)*Fin_i[k]*E1[k];
 
     /* for original */
     
     for(ly = (-MSP+1); ly <= MSP; ++ly){
 
-      tmp = E2y_a[2*MSP*k + (ly+MSP-1)]*E3y_a[abs(ly)];
+      tmp = E2y[2*MSP*k + (ly+MSP-1)]*E3y[abs(ly)];
       
       vy_r = v0_r*tmp;
       vy_i = v0_i*tmp;
 
-      idy = idx_fftw(my_a[k]+ly,Mry);
+      idy = idx_fftw(my[k]+ly,Mry);
 
       if(idy < (Ny+1))
 	for(lx = (-MSP+1); lx <= MSP; ++lx){
-	  idx = idx_fftw(mx_a[k]+lx,Mrx);
-	  in_a[idx*Mh+idy] += (vy_r + I*vy_i)*E2x_a[2*MSP*k+(lx+MSP-1)]*E3x_a[abs(lx)]/2;
+	  idx = idx_fftw(mx[k]+lx,Mrx);
+	  in[idx*Mh+idy] += (vy_r + I*vy_i)*E2x[2*MSP*k+(lx+MSP-1)]*E3x[abs(lx)]/2;
 	}
 
-      idy = idx_fftw(-(my_a[k]+ly),Mry);
+      idy = idx_fftw(-(my[k]+ly),Mry);
 
       if(idy < (Ny+1))
 	for(lx = (-MSP+1); lx <= MSP; ++lx){
-	  idx = idx_fftw(-(mx_a[k]+lx),Mrx);
-	  in_a[idx*Mh+idy] += (vy_r - I*vy_i)*E2x_a[2*MSP*k+(lx+MSP-1)]*E3x_a[abs(lx)]/2;
+	  idx = idx_fftw(-(mx[k]+lx),Mrx);
+	  in[idx*Mh+idy] += (vy_r - I*vy_i)*E2x[2*MSP*k+(lx+MSP-1)]*E3x[abs(lx)]/2;
 	}
 
     }
@@ -208,36 +178,21 @@ void NUFFT2d1(double * RESTRICT Xout,
     for(j = 0; j < Ny; ++j){
 
       idy = m2mr(j,Ny);
-      Xout_a[k*Ny + j] = out_a[idx*Mry + idy]*E4mat_a[k*Ny + j]/MM;
+      Xout[k*Ny + j] = out[idx*Mry + idy]*E4mat[k*Ny + j]/MM;
     }
   }
   
 }
 
-void NUFFT2d2(double * RESTRICT Fout_r, double * RESTRICT Fout_i,
+void NUFFT2d2(double *Fout_r, double *Fout_i,
 	      int M, int Nx, int Ny,
-	      double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
-	      double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
-	      double * RESTRICT in, fftw_complex * RESTRICT out, fftw_plan *fftwplan_r2c,
-	      double * RESTRICT Xin)
+	      double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+	      double *E4mat, int *mx, int *my,
+	      double *in, fftw_complex *out, fftw_plan *fftwplan_r2c,
+	      double *Xin)
 {
   int i, j, k, lx, ly, Mrx, Mry, Mh, idx, idy;
   double f_r, tmp, MM;
-  double accr, acci;
-
-  double *Fout_r_a = ASSUME_ALIGNED(Fout_r, ALIGNMENT); 
-  double *Fout_i_a = ASSUME_ALIGNED(Fout_i, ALIGNMENT); 
-  double *E1_a = ASSUME_ALIGNED(E1, ALIGNMENT); 
-  double *E2x_a = ASSUME_ALIGNED(E2x, ALIGNMENT); 
-  double *E2y_a = ASSUME_ALIGNED(E2y, ALIGNMENT); 
-  double *E3x_a = ASSUME_ALIGNED(E3x, ALIGNMENT); 
-  double *E3y_a = ASSUME_ALIGNED(E3y, ALIGNMENT); 
-  double *E4mat_a = ASSUME_ALIGNED(E4mat, ALIGNMENT); 
-  double *in_a = ASSUME_ALIGNED(in, ALIGNMENT); 
-  double *Xin_a = ASSUME_ALIGNED(Xin, ALIGNMENT); 
-  fftw_complex *out_a = ASSUME_ALIGNED(out, ALIGNMENT); 
-  int *mx_a = ASSUME_ALIGNED(mx, ALIGNMENT); 
-  int *my_a = ASSUME_ALIGNED(my, ALIGNMENT); 
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
@@ -248,7 +203,7 @@ void NUFFT2d2(double * RESTRICT Fout_r, double * RESTRICT Fout_i,
     idx = m2mr(i,Nx);
     for( j = 0; j < Ny; ++j){
       idy = m2mr(j,Ny);
-      in_a[idx*Mry + idy] = Xin_a[i*Ny + j]*E4mat_a[i*Ny + j];
+      in[idx*Mry + idy] = Xin[i*Ny + j]*E4mat[i*Ny + j];
     }
   }
 
@@ -256,86 +211,65 @@ void NUFFT2d2(double * RESTRICT Fout_r, double * RESTRICT Fout_i,
 
   for(k = 0; k < M; ++k) for(ly = (-MSP+1); ly <= MSP; ++ly){
 	
-      f_r = E1_a[k]*E2y_a[2*MSP*k + (ly+MSP-1)]*E3y_a[abs(ly)];
+      f_r = E1[k]*E2y[2*MSP*k + (ly+MSP-1)]*E3y[abs(ly)];
 
-      idy = idx_fftw((my_a[k]+ly),Mry);
+      idy = idx_fftw((my[k]+ly),Mry);
       
-      accr = 0;
-      acci = 0;
-
       if(idy < (Ny+1)){
 	for(lx = (-MSP+1); lx <= MSP; ++lx){
 
-	  idx = idx_fftw((mx_a[k]+lx),Mrx);
-	  tmp = E2x_a[2*MSP*k + (lx+MSP-1)]*E3x_a[abs(lx)];
+	  idx = idx_fftw((mx[k]+lx),Mrx);
+	  tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
 
-	  accr +=           creal(out_a[idx*Mh + idy])*tmp;
-	  acci += (NU_SIGN)*cimag(out_a[idx*Mh + idy])*tmp;
+	  Fout_r[k] +=           creal(out[idx*Mh + idy])*tmp;
+	  Fout_i[k] += (NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
 	}
       }
 
       else{
-	idy = idx_fftw(-(my_a[k]+ly),Mry);
+	idy = idx_fftw(-(my[k]+ly),Mry);
 	
 	if(idy < (Ny+1)) for(lx = (-MSP+1); lx <= MSP; ++lx){
 	    
-	    idx = idx_fftw(-(mx_a[k]+lx),Mrx);
-	    tmp = E2x_a[2*MSP*k + (lx+MSP-1)]*E3x_a[abs(lx)];
+	    idx = idx_fftw(-(mx[k]+lx),Mrx);
+	    tmp = f_r*E2x[2*MSP*k + (lx+MSP-1)]*E3x[abs(lx)]/MM;
 	    
-	    accr +=            creal(out_a[idx*Mh + idy])*tmp;
-	    acci += -(NU_SIGN)*cimag(out_a[idx*Mh + idy])*tmp;
+	    Fout_r[k] +=            creal(out[idx*Mh + idy])*tmp;
+	    Fout_i[k] += -(NU_SIGN)*cimag(out[idx*Mh + idy])*tmp;
 	  }
       }
-
-      Fout_r_a[k] += f_r * accr / MM;
-      Fout_i_a[k] += f_r * acci / MM;
     }
 
 }
 
-void calc_yAx_nufft(double * RESTRICT yAx_r, double * RESTRICT yAx_i,
-		    int M, double * RESTRICT vis_r, double * RESTRICT vis_i, double * RESTRICT weight)
+void calc_yAx_nufft(double *yAx_r, double *yAx_i,
+		    int M, double *vis_r, double *vis_i, double *weight)
 {
   int i;
-
-  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
-  double *vis_r_a = ASSUME_ALIGNED(vis_r, ALIGNMENT); 
-  double *vis_i_a = ASSUME_ALIGNED(vis_i, ALIGNMENT); 
-  double *weight_a = ASSUME_ALIGNED(weight, ALIGNMENT); 
 
   /* main */
 
   for(i = 0; i < M; ++i){
-    yAx_r_a[i] = (vis_r_a[i] - yAx_r_a[i])*weight_a[i];
-    yAx_i_a[i] = (vis_i_a[i] - yAx_i_a[i])*weight_a[i];
+    yAx_r[i] = (vis_r[i] - yAx_r[i])*weight[i];
+    yAx_i[i] = (vis_i[i] - yAx_i[i])*weight[i];
   }
 }
 
-double calc_F_part_nufft(double * RESTRICT yAx_r, double * RESTRICT yAx_i,
+double calc_F_part_nufft(double *yAx_r, double *yAx_i,
 			 int M, int Nx, int Ny,
-			 double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y,
-			 double * RESTRICT E3x, double * RESTRICT E3y, double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
-			 double * RESTRICT in_r, fftw_complex * RESTRICT out_c, double * RESTRICT dzeros, fftw_plan *fftwplan_r2c,
-			 double * RESTRICT vis_r, double * RESTRICT vis_i, double * RESTRICT weight, double * RESTRICT xvec)
+			 double *E1, double *E2x, double *E2y,
+			 double *E3x, double *E3y, double *E4mat, int *mx, int *my,
+			 double *in_r, fftw_complex *out_c, double *dzeros, fftw_plan *fftwplan_r2c,
+			 double *vis_r, double *vis_i, double *weight, double *xvec)
 {
   int inc = 1, Ml = M, MM = 4*Nx*Ny;
   double chisq;
-  int i;
-
-  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
-  double *in_r_a = ASSUME_ALIGNED(in_r, ALIGNMENT); 
 
   /* initializaton for nufft */
-  /* replaced dcopy_ with simple loop */
-  for (i = 0; i < MM; ++i) {
-    in_r_a[i] = 0;
-  }
-  for (i = 0; i < Ml; ++i) {
-    yAx_r_a[i] = 0;
-    yAx_i_a[i] = 0;
-  }
+
+  dcopy_(&MM, dzeros, &inc, in_r, &inc);
+  dcopy_(&Ml, dzeros, &inc, yAx_r, &inc);
+  dcopy_(&Ml, dzeros, &inc, yAx_i, &inc);
 
   /* nufft */
   
@@ -350,22 +284,18 @@ double calc_F_part_nufft(double * RESTRICT yAx_r, double * RESTRICT yAx_i,
   return(chisq/2);
 }
 
-void dF_dx_nufft(double * RESTRICT dFdx,
+void dF_dx_nufft(double *dFdx,
 		 int M, int Nx, int Ny,
-		 double * RESTRICT E1, double * RESTRICT E2x, double * RESTRICT E2y, double * RESTRICT E3x, double * RESTRICT E3y,
-		 double * RESTRICT E4mat, int * RESTRICT mx, int * RESTRICT my,
-		 fftw_complex * RESTRICT in_c, double * RESTRICT out_r, fftw_plan *fftwplan_c2r, double * RESTRICT weight,
-		 double * RESTRICT yAx_r, double * RESTRICT yAx_i)
+		 double *E1, double *E2x, double *E2y, double *E3x, double *E3y,
+		 double *E4mat, int *mx, int *my,
+		 fftw_complex *in_c, double *out_r, fftw_plan *fftwplan_c2r, double *weight,
+		 double *yAx_r, double *yAx_i)
 {
   int i;
 
-  double *yAx_r_a = ASSUME_ALIGNED(yAx_r, ALIGNMENT); 
-  double *yAx_i_a = ASSUME_ALIGNED(yAx_i, ALIGNMENT); 
-  double *weight_a = ASSUME_ALIGNED(weight, ALIGNMENT); 
-
   for(i = 0; i < M; ++i){
-    yAx_r_a[i] *= weight_a[i];
-    yAx_i_a[i] *= weight_a[i];
+    yAx_r[i] *= weight[i];
+    yAx_i[i] *= weight[i];
   }
 
   NUFFT2d1(dFdx, M, Nx, Ny, E1, E2x, E2y, E3x, E3y, E4mat,
@@ -413,13 +343,17 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   /* for fftw */
   
-  //cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
-  assert(sizeof(fftw_complex) == 2 * sizeof(double));
-  cvec  = (fftw_complex*) alloc_vector(2*MMh);
+  cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
   rvec  = alloc_vector(4*NN);
 
-  // do not allocate dzeros for memory efficiency
-  dzeros = NULL;
+  if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
   
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
@@ -590,6 +524,7 @@ int mfista_L1_TV_core_nufft(double *xout,
 
   free(cvec);
   free(rvec);
+  free(dzeros);
 
   fftw_destroy_plan(fftwplan_c2r);
   fftw_destroy_plan(fftwplan_r2c);
@@ -662,9 +597,15 @@ int mfista_L1_TSV_core_nufft(double *xout,
   cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
   rvec  = alloc_vector(4*NN);
   
-  // do not allocate dzeros for memory efficiency
-  dzeros = NULL;
-
+  if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
+  
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
@@ -825,6 +766,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   free(cvec);
   free(rvec);
+  free(dzeros);
 
   fftw_destroy_plan(fftwplan_c2r);
   fftw_destroy_plan(fftwplan_r2c);
@@ -873,13 +815,16 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   /* for fftw */
   
-  //cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
-  assert(sizeof(fftw_complex) == 2 * sizeof(double));
-  cvec = (fftw_complex*) alloc_vector(2*2*Nx*(Ny+1));
+  cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
   rvec  = alloc_vector(4*NN);
-
-  // do not allocate dzeros for memory efficiency
-  dzeros = NULL;
+    if(4*NN > M){
+    dzeros= alloc_vector(4*NN);
+    for(i = 0; i < 4*NN; ++i) dzeros[i] = 0;
+  }
+  else{
+    dzeros= alloc_vector(M);
+    for(i = 0; i < M; ++i) dzeros[i] = 0;
+  }
 
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
 
@@ -950,6 +895,7 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   free(cvec);
   free(rvec);
+  free(dzeros);
 
   fftw_destroy_plan(fftwplan_r2c);
 

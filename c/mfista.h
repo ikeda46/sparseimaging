@@ -40,9 +40,6 @@
 #define ETA       1.1
 #define EPS       1.0e-5
 
-/* memory allocation of matrix and vectors */
-#define ALIGNMENT 32
-
 /* result format */
 
 struct RESULT{
