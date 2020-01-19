@@ -23,12 +23,14 @@ CLIBS_FFTW = -lfftw3_threads -lfftw3
 
 CLIBS= -lm -lrt -lpthread
 
-targets = mfista_imaging_nufft
+targets = mfista_imaging_nufft mfista_imaging_fft
 object_io = mfista_io.o
-object_tools = mfista_tools.o 
+object_tools = mfista_tools.o
+object_fft = mfista_fft_lib.o
 object_nufft = mfista_nufft_lib.o
 
-object_tools2 = mfista_tools.o2 
+object_tools2 = mfista_tools.o2
+object_fft2 = mfista_fft_lib.o2
 object_nufft2 = mfista_nufft_lib.o2
 
 all: $(targets)
@@ -36,10 +38,16 @@ all: $(targets)
 mfista_imaging_nufft: mfista_imaging_nufft.o $(object_io) $(object_nufft) $(object_tools)
 	$(CXX) ${CXX_VERSION} $(CFLAGS) $(object_io) $(object_nufft) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW)  -o $@
 
-libraries: libmfista_nufft
+mfista_imaging_fft: mfista_imaging_fft.o $(object_io) $(object_fft) $(object_tools)
+	$(CXX) ${CXX_VERSION} $(CFLAGS) $(object_io) $(object_fft) $(object_tools) $@.o $(CLIBS) $(CLIBS_FFTW)  -o $@
+
+libraries: libmfista_nufft libmfista_fft
 
 libmfista_nufft: $(object_tools2) $(object_nufft2)
 	$(CXX) ${CXX_VERSION} $(CFLAGS) -shared $(object_nufft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW) -I${EIGENLIBRARY} -Xlinker -rpath -Xlinker /usr/lib
+
+libmfista_fft: $(object_tools2) $(object_fft2)
+	$(CXX) ${CXX_VERSION} $(CFLAGS) -shared $(object_fft2) $(object_tools2) -o $@.so $(CLIBS) $(CLIBS_FFTW) -I${EIGENLIBRARY} -Xlinker -rpath -Xlinker /usr/lib
 
 .cpp.o:
 	$(CXX) ${CXX_VERSION} -c -O2 -Wall $(CFLAGS) -I${EIGENLIBRARY} -fPIC -o $@ $<

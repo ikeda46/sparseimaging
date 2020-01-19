@@ -79,16 +79,16 @@ int main(int argc, char *argv[]){
   // read parameters
 
   lambda_l1 = atof(argv[2]);
-  cout << "lambda_l1  = " << lambda_l1 << "\n";
+  cout << "lambda_l1  = " << lambda_l1 << endl;
 
   lambda_tv = atof(argv[3]);
-  cout << "lambda_tv  = " << lambda_tv << "\n";
+  cout << "lambda_tv  = " << lambda_tv << endl;
 
   lambda_tsv = atof(argv[4]);
-  cout << "lambda_tsv = " << lambda_tsv << "\n";
+  cout << "lambda_tsv = " << lambda_tsv << endl;
 
   cinit = std::atof(argv[5]);
-  cout << "c = " << cinit << "\n";
+  cout << "c = " << cinit << endl;
 
   // read options
 
@@ -121,13 +121,13 @@ int main(int argc, char *argv[]){
   }
 
   if(nonneg_flag == 1)
-    cout << "x is nonnegative." << "\n";
+    cout << "x is nonnegative." << endl;
 
   if(log_flag ==1)
     cout << "Log will be saved to "
-	 << "\"" << log_fname << "\"." << "\n";
+	 << "\"" << log_fname << "\"." << endl;
 
-  printf("\n");
+  cout << endl;
 
 
   // read fftw_data
@@ -182,6 +182,7 @@ int main(int argc, char *argv[]){
   vis_r  = new double[M];
   vis_i  = new double[M];
   vis_std  = new double[M];
+  xinit = new double[NN];
   xvec  = new double[NN];
   box = new float[NN];
 
@@ -192,7 +193,7 @@ int main(int argc, char *argv[]){
     if(sscanf(buf_str.data(), "%le, %le, %le, %le, %le\n",
 	      u_dx+i, v_dy+i, vis_r+i, vis_i+i, vis_std+i)!=5){
 
-      printf("cannot read data.\n");
+      cerr << "cannot read data." << endl;
       exit(0);
     }
   }
@@ -201,10 +202,8 @@ int main(int argc, char *argv[]){
 
   // initialize vector
 
-  xinit = new double[NN];
-
-  if (init_flag ==1){
-    cout << "Initializing x with " << init_fname.data() << ".\n";
+  if (init_flag == 1){
+    cout << "Initializing x with " << init_fname.data() << endl;
 
     ifstream init_fs(init_fname.data(), ios::in | ios::binary);
     dnum = (int)(init_fs.readsome((char*)xinit, sizeof(double)*NN))
@@ -212,7 +211,7 @@ int main(int argc, char *argv[]){
     init_fs.close();
 
     if(dnum != NN){
-      printf("Number of read data is shorter than expected.\n");
+      cerr << "Number of read data is shorter than expected." << endl;
       exit(0);
     }
   }
@@ -221,7 +220,7 @@ int main(int argc, char *argv[]){
 
   // cleanbox
   
-  if (box_flag ==1){
+  if (box_flag == 1){
     cout << "Restrict x with CLEAN box defined in \"" << box_fname.data()
 	 << ".\"\n";
 
@@ -231,10 +230,9 @@ int main(int argc, char *argv[]){
     box_fs.close();
 
     if(dnum != NN){
-      printf("Number of read data is shorter than expected.\n");
+      cerr << "Number of read data is shorter than expected." << endl;
       exit(0);
     }
-    
   }
 
   // main iteration
@@ -271,8 +269,8 @@ int main(int argc, char *argv[]){
   delete vis_r;
   delete vis_i;
   delete vis_std;
-  delete xvec;
   delete xinit;
+  delete xvec;
   delete box;
 
 }

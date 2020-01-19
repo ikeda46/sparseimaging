@@ -105,3 +105,15 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
 			       double cinit, double *xinit, double *xout,
 			       int nonneg_flag, int box_flag, float *cl_box,
 			       struct RESULT *mfista_result);
+
+// mfista_fft_lib
+
+void mfista_imaging_core_fft(int *u_idx, int *v_idx, 
+			     double *y_r, double *y_i, double *noise_stdev,
+			     int M, int Nx, int Ny, int maxiter, double eps,
+			     double lambda_l1, double lambda_tv, double lambda_tsv,
+			     double cinit, double *xinit, double *xout,
+			     int nonneg_flag, unsigned int fftw_plan_flag,
+			     int box_flag, float *cl_box,
+			     struct RESULT *mfista_result);
+

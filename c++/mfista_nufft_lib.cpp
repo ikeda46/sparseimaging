@@ -1,4 +1,5 @@
 #include "mfista.hpp"
+#include <iomanip>
 
 // mfist_nufft_lib
 
@@ -277,8 +278,6 @@ int mfista_L1_TSV_core_nufft(double *xout,
   dfdx   = VectorXd::Zero(NN);
   xnew   = VectorXd::Zero(NN);
   xtmp   = VectorXd::Zero(NN);
-  xvec   = VectorXd::Zero(NN);
-  zvec   = VectorXd::Zero(NN);
   dtmp   = VectorXd::Zero(NN);
   box    = VectorXd::Zero(NN);
 
@@ -329,7 +328,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
   else if(nonneg_flag == 1)
     soft_th_box =soft_threshold_nonneg_box;
   else {
-    printf("nonneg_flag must be chosen properly.\n");
+    cout << "nonneg_flag must be chosen properly." << endl;
     return(0);
   }
 
@@ -357,8 +356,10 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
     cost(iter) = costtmp;
 
-    if((iter % 10) == 0)
-      printf("%d cost = %f, c = %f \n",(iter+1), cost(iter), c);
+    if((iter % 10) == 0){
+      cout << iter+1 << " cost = " << fixed << setprecision(5)
+	   << cost(iter) << ", c = " << c << endl;
+    }
 
     Qcore = calc_F_part_nufft(yAx, E1, E2x, E2y, E4mat, mx, my,
  			      rvec, cvec, &fftwplan_r2c, vis, weight, zvec);
@@ -430,11 +431,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
     mu = munew;
   }
   if(iter == maxiter){
-    printf("%d cost = %f \n",(iter), cost(iter-1));
+    cout << iter << " cost = " << cost(iter-1) << endl;
     iter = iter -1;
   }
   else
-    printf("%d cost = %f \n",(iter+1), cost(iter));
+    cout << iter+1 << " cost = "  << cost(iter) << endl;
 
   printf("\n");
 
@@ -449,6 +450,10 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   fftw_destroy_plan(fftwplan_c2r);
   fftw_destroy_plan(fftwplan_r2c);
+
+  fftw_cleanup();
+
+  cout << resetiosflags(ios_base::floatfield);
 
   return(iter+1);
 }
