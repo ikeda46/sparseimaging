@@ -35,8 +35,9 @@ using namespace std;
 using namespace Eigen;
 
 #ifdef __cplusplus
-extern "C"
+extern "C" {
 #endif
+
 struct RESULT{
   int M;
   int N;
@@ -59,6 +60,10 @@ struct RESULT{
   double *residual;
   double Lip_const;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 struct IO_FNAMES{
   unsigned int fft;
