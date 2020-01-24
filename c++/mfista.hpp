@@ -34,6 +34,7 @@
 using namespace std;
 using namespace Eigen;
 
+extern "C"
 struct RESULT{
   int M;
   int N;
@@ -96,6 +97,8 @@ void d_TSV(VectorXd &dvec, int Nx, int Ny, VectorXd &xvec);
 
 void get_current_time(struct timespec *t);
 
+
+extern "C" {
 // mfista_nufft_lib
 
 void mfista_imaging_core_nufft(double *u_dx, double *v_dy, 
@@ -116,4 +119,4 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 			     int nonneg_flag, unsigned int fftw_plan_flag,
 			     int box_flag, float *cl_box,
 			     struct RESULT *mfista_result);
-
+}
