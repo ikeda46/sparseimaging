@@ -178,14 +178,14 @@ int main(int argc, char *argv[]){
 
   // allocate vectors (RAII)
   
-  unique_ptr<double []> u_p(new double[M]);
-  unique_ptr<double []> v_p(new double[M]);
-  unique_ptr<double []> r_p(new double[M]);
-  unique_ptr<double []> i_p(new double[M]);
-  unique_ptr<double []> s_p(new double[M]);
-  unique_ptr<double []> xi_p(new double[NN]);
-  unique_ptr<double []> xv_p(new double[NN]);
-  unique_ptr<float []> b_p(new float[NN]);
+  std::unique_ptr<double []> u_p(new double[M]);
+  std::unique_ptr<double []> v_p(new double[M]);
+  std::unique_ptr<double []> r_p(new double[M]);
+  std::unique_ptr<double []> i_p(new double[M]);
+  std::unique_ptr<double []> s_p(new double[M]);
+  std::unique_ptr<double []> xi_p(new double[NN]);
+  std::unique_ptr<double []> xv_p(new double[NN]);
+  std::unique_ptr<float []> b_p(new float[NN]);
   u_dx = u_p.get();
   v_dy = v_p.get();
   vis_r  = r_p.get();
