@@ -1,5 +1,7 @@
 #include "mfista.hpp"
+#include "mfista_memory.hpp"
 #include <iomanip>
+#include <memory>
 
 // mfist_nufft_lib
 
@@ -310,14 +312,27 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   // for fftw
   
-  rvec  = new double [4*NN];
-  cvec  = (fftw_complex*) fftw_malloc(MMh*sizeof(fftw_complex));
+  // memory allocation (RAII)
+  std::unique_ptr<double []> rvec_wrapper(new double [4*NN]);
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(MMh * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  rvec = rvec_wrapper.get();
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
   for(i = 0; i< MMh; i++) {cvec[i][0]=0;cvec[i][1]=0;}
   for(i = 0; i< 4*NN; i++){rvec[i]=0;}
 
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
+  ScopeGuard guard([&]() {
+    // cout << "deallocating c2r plan" << endl;
+    deallocate_fftw_plan(fftwplan_c2r);
+    // cout << "deallocating r2c plan" << endl;
+    deallocate_fftw_plan(fftwplan_r2c);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
+  });
   fftw_execute(fftwplan_r2c);
   fftw_execute(fftwplan_c2r);
   
@@ -443,16 +458,6 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   for(i = 0; i < NN; i++) xout[i] = xvec(i);
 
-  // free memory
-  
-  delete cvec;
-  delete rvec;
-
-  fftw_destroy_plan(fftwplan_c2r);
-  fftw_destroy_plan(fftwplan_r2c);
-
-  fftw_cleanup();
-
   cout << resetiosflags(ios_base::floatfield);
 
   return(iter+1);
@@ -497,10 +502,21 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   // for fftw
 
-  cvec  = (fftw_complex*) fftw_malloc(2*Nx*(Ny+1)*sizeof(fftw_complex));
-  rvec  = new double [4*NN];
+  // memory allocation (RAII)
+  std::unique_ptr<double []> rvec_wrapper(new double [4*NN]);
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(2*Nx*(Ny+1) * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  rvec = rvec_wrapper.get();
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
+  ScopeGuard guard([&]() {
+    // cout << "deallocating r2c plan" << endl;
+    deallocate_fftw_plan(fftwplan_r2c);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
+  });
 
   // complex malloc
 
@@ -557,14 +573,6 @@ void calc_result_nufft(struct RESULT *mfista_result,
   //    mfista_result->tvcost = TV(Nx, Ny, x);
   //    mfista_result->finalcost += lambda_tv*(mfista_result->tvcost);
   //  }
-
-  // free 
-
-  delete cvec;
-  delete rvec;
-
-  fftw_destroy_plan(fftwplan_r2c);
-
 }
 
 /* main subroutine */
