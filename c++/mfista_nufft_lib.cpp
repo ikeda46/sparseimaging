@@ -514,6 +514,8 @@ void calc_result_nufft(struct RESULT *mfista_result,
   ScopeGuard guard([&]() {
     // cout << "deallocating r2c plan" << endl;
     deallocate_fftw_plan(fftwplan_r2c);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
   });
 
   // complex malloc
