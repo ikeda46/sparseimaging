@@ -1,6 +1,7 @@
 #include "mfista.hpp"
 #include "mfista_memory.hpp"
 #include <iomanip>
+#include <memory>
 
 double fft_half_squareNorm(int Nx, int Ny, fftw_complex *FT_h)
 {
