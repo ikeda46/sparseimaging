@@ -31,7 +31,7 @@ object_fft = mfista_fft_lib.o
 object_nufft = mfista_nufft_lib.o
 
 object_tools2 = mfista_tools.o2
-object_memory = mfista_memory.o2
+object_memory2 = mfista_memory.o2
 object_fft2 = mfista_fft_lib.o2
 object_nufft2 = mfista_nufft_lib.o2
 
