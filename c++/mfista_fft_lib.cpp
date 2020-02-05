@@ -377,6 +377,7 @@ void calc_result_fft(int M, int Nx, int Ny,
     // cout << "fftw_cleanup" << endl;
     fftw_cleanup();
   });
+  
   /* computing results */
   
   tmp = calc_F_part_fft(Nx, Ny, vis_h, mask_h,
