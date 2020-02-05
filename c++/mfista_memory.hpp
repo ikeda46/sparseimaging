@@ -11,7 +11,7 @@ void deallocate_fftw_complex(void *ptr);
 void deallocate_fftw_plan(fftw_plan ptr);
 
 class ScopeGuard {
-  typedef std::function<void(void) noexcept> Func;
+  typedef std::function<void(void)> Func;
 public:
   ScopeGuard() = delete;
   explicit ScopeGuard(Func clean_up, bool enabled = true) :
