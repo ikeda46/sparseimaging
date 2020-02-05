@@ -1,4 +1,5 @@
 #include "mfista.hpp"
+#include <memory>
 #include <fstream>
 
 // I-O part
@@ -175,16 +176,24 @@ int main(int argc, char *argv[]){
   cout << "Y-dim of image:        " << Ny << endl;
   cout << "Data size Nx x Ny:     " << NN << endl;
 
-  // allocate vectors
+  // allocate vectors (RAII)
   
-  u_dx = new double[M];
-  v_dy = new double[M];
-  vis_r  = new double[M];
-  vis_i  = new double[M];
-  vis_std  = new double[M];
-  xinit = new double[NN];
-  xvec  = new double[NN];
-  box = new float[NN];
+  unique_ptr<double []> u_p(new double[M]);
+  unique_ptr<double []> v_p(new double[M]);
+  unique_ptr<double []> r_p(new double[M]);
+  unique_ptr<double []> i_p(new double[M]);
+  unique_ptr<double []> s_p(new double[M]);
+  unique_ptr<double []> xi_p(new double[NN]);
+  unique_ptr<double []> xv_p(new double[NN]);
+  unique_ptr<float []> b_p(new float[NN]);
+  u_dx = u_p.get();
+  v_dy = v_p.get();
+  vis_r  = r_p.get();
+  vis_i  = i_p.get();
+  vis_std  = s_p.get();
+  xinit = xi_p.get();
+  xvec  = xv_p.get();
+  box = b_p.get();
 
   // read visibilities
 
@@ -261,16 +270,4 @@ int main(int argc, char *argv[]){
     write_result(&log_fs, argv[0], &mfista_io, &mfista_result);
     log_fs.close();
   }
-
-  // release memory
-
-  delete u_dx;
-  delete v_dy;
-  delete vis_r;
-  delete vis_i;
-  delete vis_std;
-  delete xinit;
-  delete xvec;
-  delete box;
-
 }
