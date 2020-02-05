@@ -1,4 +1,5 @@
 #include "mfista.hpp"
+#include "mfista_memory.hpp"
 #include <iomanip>
 
 double fft_half_squareNorm(int Nx, int Ny, fftw_complex *FT_h)
@@ -174,8 +175,13 @@ int mfista_L1_TSV_core_fft(int Nx, int Ny, int maxiter, double eps,
  
   /* fftw malloc */
 
-  rvec  = new double [4*NN];
-  cvec = (fftw_complex*) fftw_malloc(Nx*Ny_h*sizeof(fftw_complex));
+  std::unique_ptr<double []> rvec_wrapper(new double [4*NN]);
+  rvec = rvec_wrapper.get();
+
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(Nx*Ny_h * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
   /* preparation for fftw */
 
@@ -192,6 +198,18 @@ int mfista_L1_TSV_core_fft(int Nx, int Ny, int maxiter, double eps,
   
   fftwplan  = fftw_plan_dft_r2c_2d( Nx, Ny, rvec, cvec, fftw_plan_flag);
   ifftwplan = fftw_plan_dft_c2r_2d( Nx, Ny, cvec, rvec, fftw_plan_flag);
+  ScopeGuard guard([&]() {
+    // cout << "deallocating forward plan" << endl;
+    deallocate_fftw_plan(fftwplan);
+    // cout << "deallocating inverse plan" << endl;
+    deallocate_fftw_plan(ifftwplan);
+    // cout << "fftw_cleanup" << endl;
+#ifdef PTHREAD
+    fftw_cleanup_threads();
+#else
+    fftw_cleanup();
+#endif
+  });
 
   /* initialization */
 
@@ -309,20 +327,6 @@ int mfista_L1_TSV_core_fft(int Nx, int Ny, int maxiter, double eps,
 
   for(i = 0; i < NN; i++) xout[i] = xvec(i);
 
-  /* free */
-  
-  delete cvec;
-  delete rvec;
-
-  fftw_destroy_plan(fftwplan);
-  fftw_destroy_plan(ifftwplan);
-
-#ifdef PTHREAD
-  fftw_cleanup_threads();
-#else
-  fftw_cleanup();
-#endif
-
   cout << resetiosflags(ios_base::floatfield);
   
   return(iter+1);
@@ -347,7 +351,8 @@ void calc_result_fft(int M, int Nx, int Ny,
 
   /* allocate variables */
 
-  rvec   = new double [NN];
+  std::unique_ptr<double []> rvec_wrapper(new double [NN]);
+  rvec   = rvec_wrapper.get();
 
   xvec   = Map<VectorXd>(x,NN);
   mask_h = VectorXd::Zero(Nx*Ny_h);
@@ -355,7 +360,10 @@ void calc_result_fft(int M, int Nx, int Ny,
   
   /* fftw malloc */
 
-  cvec = (fftw_complex*) fftw_malloc(Nx*Ny_h*sizeof(fftw_complex));
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(Nx*Ny_h * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
   /* preparation for fftw */
 
@@ -363,7 +371,12 @@ void calc_result_fft(int M, int Nx, int Ny,
   fft_full2half(Nx, Ny, vis, vis_h);
 
   fftwplan = fftw_plan_dft_r2c_2d( Nx, Ny, rvec, cvec, FFTW_ESTIMATE);
-
+  ScopeGuard guard([&]() {
+    // cout << "deallocating plan" << endl;
+    deallocate_fftw_plan(fftwplan);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
+  });
   /* computing results */
   
   tmp = calc_F_part_fft(Nx, Ny, vis_h, mask_h,
@@ -404,14 +417,6 @@ void calc_result_fft(int M, int Nx, int Ny,
     mfista_result->tsvcost = TSV(Nx, Ny, xvec, buf_diff);
     mfista_result->finalcost += lambda_tsv*(mfista_result->tsvcost);
   }
-
-  /* free */
-  
-  delete cvec;
-  delete rvec;
-
-  fftw_destroy_plan(fftwplan);
-  fftw_cleanup();
 }
 
 /* main subroutine */
@@ -434,8 +439,12 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
     
   epsilon *= eps/((double)M);
 
-  vis   = (fftw_complex*) fftw_malloc(Nx*Ny*sizeof(fftw_complex));
-  mask = new double [Nx*Ny];
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> vis_wrapper(
+    allocate_fftw_complex(Nx*Ny * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  vis   = reinterpret_cast<fftw_complex *>(vis_wrapper.get());
+  std::unique_ptr<double []> mask_wrapper(new double[Nx*Ny]);
+  mask = mask_wrapper.get();
 
   idx2mat(M, Nx, Ny, u_idx, v_idx, y_r, y_i, noise_stdev, vis, mask);
 
@@ -469,9 +478,5 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
   mfista_result->maxiter   = maxiter;
 
   calc_result_fft(M, Nx, Ny, vis, mask, lambda_l1, lambda_tv, lambda_tsv, xout, mfista_result);
-
-  delete vis;
-  delete mask;
-
 }
 
