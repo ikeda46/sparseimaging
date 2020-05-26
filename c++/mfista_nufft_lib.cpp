@@ -5,11 +5,6 @@
 
 // mfist_nufft_lib
 
-inline fftw_complex *fftw_cast(const std::complex<double> *p)
-{
-  return const_cast<fftw_complex*>(reinterpret_cast<const fftw_complex*>(p));
-}
-
 int idx_fftw(int m, int Mr)
 {
   if(m >= 0 && m < Mr/2) return(m);
@@ -17,72 +12,25 @@ int idx_fftw(int m, int Mr)
   else                   return(2*Mr);
 }
 
-void large2small(int Nx, int Ny, VectorXd &out_s, VectorXd &in_l,
-  VectorXd &E4)
+int m2mr(int id, int N)
 {
-  int k, Nxh, Nyh;
-  double MMinv;
-
-  Nxh = (int)Nx/2;
-  Nyh = (int)Ny/2;
-
-  MMinv  = 1/((double)(4*Nx*Ny));
-
-  for(k = 0; k < Nxh; ++k){
-
-    out_s.segment(k*Ny,Ny) <<
-      (E4.segment(k*Ny,    Nyh).array())
-        *(in_l.segment(2*(k+3*Nxh)*Ny+3*Nyh,Nyh).array())*MMinv,
-      (E4.segment(k*Ny+Nyh,Nyh).array())
-        *(in_l.segment(2*(k+3*Nxh)*Ny,      Nyh).array())*MMinv;
-
-    out_s.segment((k+Nxh)*Ny, Ny) <<
-      (E4.segment((k+Nxh)*Ny, Nyh).array())
-        *(in_l.segment(2*k*Ny+3*Nyh, Nyh).array())*MMinv,
-      (E4.segment(k*Ny+Nyh,   Nyh).array())
-        *(in_l.segment(2*k*Ny,       Nyh).array())*MMinv;
-  }
+  if(id < N/2) return(id + 3*N/2);
+  else         return(id - N/2);
 }
 
-void small2large(int Nx, int Ny, VectorXd &out_l, VectorXd &in_s,
-  VectorXd &E4)
+void preNUFFT(VectorXd &u, VectorXd &v,
+	      VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
+	      MatrixXd &E4mat, VectorXi &mx, VectorXi &my)
 {
-  int k, Nxh, Nyh;
-
-  Nxh = (int)Nx/2;
-  Nyh = (int)Ny/2;
-
-  out_l.setZero();
-
-  for(k = 0; k < Nxh; ++k){
-
-    out_l.segment(2*Ny*(k+3*Nxh)+3*Nyh,Nyh) =
-      (in_s.segment(k*Ny,    Nyh).array())*(E4.segment(k*Ny,    Nyh).array());
-
-    out_l.segment(2*Ny*(k+3*Nxh),      Nyh) =
-      (in_s.segment(k*Ny+Nyh,Nyh).array())*(E4.segment(k*Ny+Nyh,Nyh).array());
-
-    out_l.segment(2*Ny*k+3*Nyh,Nyh) =
-      (in_s.segment((k+Nxh)*Ny,    Nyh).array())*(E4.segment((k+Nxh)*Ny,    Nyh).array());
-
-    out_l.segment(2*Ny*k,      Nyh) =
-      (in_s.segment((k+Nxh)*Ny+Nyh,Nyh).array())*(E4.segment((k+Nxh)*Ny+Nyh,Nyh).array());
-  }
-}
-
-void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
-  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
-  VectorXd &E4, VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c)
-{
-  int i, j, k;
+  int i, j, k, M, Nx, Ny;
   double taux, tauy, coeff, xix, xiy, Mrx, Mry, tmp3x, tmp3y,
     tmpx, tmpy, pi, tmpi, tmpj, tmpcoef[2*MSP];
-  VectorXi idx, idx_c;
-
-  cover_o.setZero();
-  cover_c.setZero();
 
   pi = M_PI;
+
+  M  = E1.size();
+  Nx = E4mat.rows();
+  Ny = E4mat.cols();
 
   Mrx = (double) 2*Nx;
   Mry = (double) 2*Ny;
@@ -101,7 +49,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 
     tmpx = round(u(k)*Mrx/(2*pi));
     tmpy = round(v(k)*Mry/(2*pi));
-
+    
     mx(k) = (int)tmpx;
     my(k) = (int)tmpy;
 
@@ -119,19 +67,14 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 
     tmpx = pi*(u(k)-xix)/(Mrx*taux);
     tmpy = pi*(v(k)-xiy)/(Mry*tauy);
-
+    
     for(j = 0; j < 2*MSP; j++){
+      //      E2x(k, j) = exp(tmpcoef[j]*tmpx);
+      //      E2y(k, j) = exp(tmpcoef[j]*tmpy);
       E2x(k, j) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
       E2y(k, j) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
     }
   }
-
-  for(k = 0; k < M; k++){
-      if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
-      if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
-  }
-
-//  for(k = 0; k < M; k++)  cout << idx(k) << ", " << idx_c(k) << "  " << idx(k)+idx_c(k) << endl;
 
   for(i = 0; i < Nx; i++){
 
@@ -141,171 +84,163 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     for(j = 0; j< Ny; j++){
       tmpj = (double)(j-Nx/2);
       tmpy = tauy*tmpj*tmpj;
-      E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
+      E4mat(i,j) = coeff*exp(tmpx + tmpy);
     }
   }
 }
 
-complex<double> map_0(complex<double> x){return(x);}
-
-complex<double> map_c(complex<double> x){return(conj(x));}
-
-void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
-  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
-  VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
-  MatrixXcd &mbuf_l)
+void NUFFT2d1(VectorXd &Xout,
+	      VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
+	      MatrixXd &E4mat, VectorXi &mx, VectorXi &my,
+ 	      fftw_complex *in, double *out, fftw_plan *fftwplan_c2r,
+ 	      VectorXcd &Fin)
 {
-  int Mh, i, k;
+  int M, Nx, Ny, Mrx, Mry, Mh, j, k, lx, ly, idx, idy, sign;
+  double MM;
   complex<double> v0, vy, tmpc;
-  complex<double> (*map_nufft)(complex<double> x);
+    
+  M =  E1.size();
+  Nx = E4mat.rows();
+  Ny = E4mat.cols();
 
+  Mrx = 2*Nx;
   Mh =  Ny + 1;
+  Mry = 2*Ny;
+  MM  = (double)(Mrx*Mry);
 
-  mbuf_l.setZero();
-
-  if(NU_SIGN == -1) map_nufft  = map_c;
-  else              map_nufft  = map_0;
-
-  for(k = 0; k < M; k++){
-    v0 = E1(k)*(map_nufft(Fin(k)));
-
-    if(cover_o(k)==1)
-      mbuf_l.block<2*MSP,2*MSP>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
-        0.5*v0
-        *E2x.block<1,2*MSP>(k,0).transpose()
-        *E2y.block<1,2*MSP>(k,0);
-
-    if(cover_c(k)==1)
-      mbuf_l.block<2*MSP,2*MSP>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
-        0.5*(conj(v0))
-        *E2x.block<1,2*MSP>(k,0).rowwise().reverse().transpose()
-        *E2y.block<1,2*MSP>(k,0).rowwise().reverse();
+  for(j = 0; j < Mrx*Mh; j++){
+    in[j][0] = 0;
+    in[j][1] = 0;
   }
 
-  mbuf_l.block(0,2*MSP+2*Ny,2*Nx+4*MSP,1) = mbuf_l.block(0,2*MSP,2*Nx+4*MSP,1);
+  for(k = 0; k < M; k++){
 
-  for(i = 0; i < Nx; i++){
-    in.segment(i*Mh     ,Mh) =
-      mbuf_l.block(i+2*MSP+Nx,2*MSP+Ny,1,Mh).transpose();
-    in.segment((i+Nx)*Mh,Mh) =
-      mbuf_l.block(i+2*MSP,   2*MSP+Ny,1,Mh).transpose();
+    if(NU_SIGN == 1) v0 = E1(k)*Fin(k);
+    else             v0 = E1(k)*conj(Fin(k));
+
+    // for original
+
+    for(ly = 0; ly < 2*MSP; ly++){
+
+      vy = v0*E2y(k, ly)/2.0;
+
+      for(sign = -1; sign < 2; sign +=2){
+	idy = idx_fftw(sign*(my(k)+ly-MSP+1),Mry);
+
+	if(idy < (Ny+1))
+	  for(lx = 0; lx < 2*MSP; lx++){
+	    idx = idx_fftw(sign*(mx(k)+lx-MSP+1),Mrx);
+	    tmpc = (complex<double>) vy*E2x(k,lx);
+	    in[idx*Mh + idy][0] += real(tmpc);
+	    in[idx*Mh + idy][1] += sign*imag(tmpc);
+	  }
+      }
+    }
   }
 
   fftw_execute(*fftwplan_c2r);
 
-  large2small(Nx, Ny, Xout, out, E4);
+  for(k = 0; k < Nx; k++){
+    idx = m2mr(k,Nx);
+    for(j = 0; j < Ny; j++){
+      idy = m2mr(j,Ny);
+      Xout(k*Ny + j) = out[idx*Mry + idy]*E4mat(k,j)/MM;
+    }
+  }
 }
 
-void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
-  MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my,
- 	VectorXd &in, VectorXcd &out, fftw_plan *fftwplan_r2c, VectorXd &Xin, MatrixXcd &mbuf_h)
+void NUFFT2d2(VectorXcd &Fout, VectorXd &E1,
+	      MatrixXd &E2x, MatrixXd &E2y,
+ 	      MatrixXd &E4mat, VectorXi &mx, VectorXi &my,
+ 	      double *in, fftw_complex *out, fftw_plan *fftwplan_r2c,
+ 	      VectorXd &Xin)
 {
-  int Mrx, Mry, Mh, st0, ed0, stc, edc, j, k, ly;
-  double tmp, MMinv;
-  complex<double> (*map0_nufft)(complex<double> x),(*mapc_nufft)(complex<double> x);
+  int M, Nx, Ny, Mrx, Mry, Mh, i, j, k, lx, ly, idx, idy, sign;
+  double tmp, MM, f_r;
 
-  if(NU_SIGN == -1) {map0_nufft  = map_c; mapc_nufft = map_0;}
-  else              {map0_nufft  = map_0; mapc_nufft = map_c;}
+  M =  E1.size();
+  Nx = E4mat.rows();
+  Ny = E4mat.cols();
 
   Mrx = 2*Nx;
   Mry = 2*Ny;
   Mh  = Ny+1;
-  MMinv = 1/((double)Mrx*Mry);
+  MM = (double)Mrx*Mry;
 
-  small2large(Nx, Ny, in, Xin, E4);
+  Fout = VectorXcd::Zero(M);
+
+  for(i = 0; i < 2*Nx; i++) for(j = 0; j < 2*Ny; j++) in[i*Mry + j] = 0;
+
+  for(i = 0; i < Nx; i++){
+    idx = m2mr(i,Nx);
+    for(j = 0; j < Ny; j++){
+      idy = m2mr(j,Ny);
+      in[idx*Mry + idy] = Xin(i*Ny + j)*E4mat(i,j);
+    }
+  }
 
   fftw_execute(*fftwplan_r2c);
 
-  for(j = 0; j < Nx; j++){
-    mbuf_h.block(0,j+Nx,Mh,1) = out.segment(j*Mh,     Mh);
-    mbuf_h.block(0,j,   Mh,1) = out.segment((j+Nx)*Mh,Mh);
-  }
-
   for(k = 0; k < M; k++){
+    for(ly = 0; ly < 2*MSP; ly++){
 
-    st0 = idx_fftw( (my(k)-MSP+1),Mry);
-    ed0 = idx_fftw( (my(k)+MSP),  Mry);
+      idy = -1;
+      
+      j = idx_fftw((my(k)+ly-MSP+1),Mry);
+      if(j < (Ny+1)){
+	idy = j;
+	sign = 1;
+      }
+      else{
+	j = idx_fftw(-(my(k)+ly-MSP+1),Mry);
+	if(j < (Ny+1)){
+	  idy = j;
+	  sign = -1;
+	}
+      }
 
-    stc = idx_fftw(-(my(k)+MSP),  Mry);
-    edc = idx_fftw(-(my(k)-MSP+1),Mry);
+      if( idy >= 0){
+	f_r = E1(k)*E2y(k,ly)/MM;
+	for(lx = 0; lx < 2*MSP; lx++){
 
-    if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
-
-      Fout(k) = MMinv*E1(k)*map0_nufft(
-        ((E2y.block<1,2*MSP>(k,0).transpose()*(E2x.block<1,2*MSP>(k,0))).array()
-          *(mbuf_h.block<2*MSP,2*MSP>(st0,mx(k)-MSP+1+Nx)).array()).sum()
-        );
-    }
-    else if((stc < edc) && stc >=0 && edc <= Mh ){
-
-      Fout(k) = MMinv*E1(k)*mapc_nufft(
-        (((E2y.block<1,2*MSP>(k,0).rowwise().reverse().transpose())
-            *(E2x.block<1,2*MSP>(k,0).rowwise().reverse())).array()
-          *(mbuf_h.block<2*MSP,2*MSP>(stc,-mx(k)-MSP+Nx)).array()).sum()
-        );
-
-    }
-    else{
-      Fout(k) = 0;
-      for(ly = 0; ly < 2*MSP; ly++){
-
-        j = idx_fftw((my(k)+ly-MSP+1),Mry);
-
-        tmp = MMinv*E1(k)*E2y(k,ly);
-
-        if(j < (Ny+1)){
-          Fout(k) +=
-            map0_nufft(
-              tmp
-              *(E2x.block<1,2*MSP>(k,0).dot(
-                (mbuf_h.block<1,2*MSP>(j,mx(k)-MSP+1+Nx).transpose())))
-              );
-        }
-        else{
-          j = idx_fftw(-(my(k)+ly-MSP+1),Mry);
-          if(j < (Ny+1)){
-            Fout(k) +=
-              mapc_nufft(
-                tmp
-                *(E2x.block<1,2*MSP>(k,0).dot(
-                  (mbuf_h.block<1,2*MSP>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
-                );
-          }
-        }
+	  idx = idx_fftw(sign*(mx(k)+lx-MSP+1),Mrx);
+	  tmp = f_r*E2x(k,lx);
+	  
+	  Fout(k) += complex<double>
+	    (out[idx*Mh + idy][0], sign*(NU_SIGN)*out[idx*Mh + idy][1])*tmp;
+	}
       }
     }
   }
 }
 
-double calc_F_part_nufft(int M, int Nx, int Ny,
-  VectorXcd &yAx,
-  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my,
-  VectorXd &in_r, VectorXcd &out_c,
-  fftw_plan *fftwplan_r2c, VectorXcd &vis, VectorXd &weight, VectorXd &xvec,
-  MatrixXcd &mbuf_h)
+double calc_F_part_nufft(VectorXcd &yAx,
+			 VectorXd &E1,
+			 MatrixXd &E2x, MatrixXd &E2y,
+			 MatrixXd &E4mat, VectorXi &mx, VectorXi &my,
+ 			 double *in_r, fftw_complex *out_c,
+			 fftw_plan *fftwplan_r2c,
+ 			 VectorXcd &vis, VectorXd &weight, VectorXd &xvec)
 {
-  NUFFT2d2(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
-    in_r, out_c, fftwplan_r2c, xvec, mbuf_h);
+  NUFFT2d2(yAx, E1, E2x, E2y, E4mat, mx, my,
+ 	   in_r, out_c, fftwplan_r2c, xvec);
 
   yAx = (vis.array() - yAx.array())*weight.array();
 
   return(yAx.squaredNorm()/2);
 }
 
-void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
+void dF_dx_nufft(VectorXd &dFdx,
 		 VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
-		 VectorXd &E4,
-		 VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
-		 VectorXcd &in_c, VectorXd &out_r, fftw_plan *fftwplan_c2r,
-		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l)
+		 MatrixXd &E4mat,
+		 VectorXi &mx, VectorXi &my,			 
+		 fftw_complex *in_c, double *out_r, fftw_plan *fftwplan_c2r,
+		 VectorXd &weight, VectorXcd &yAx)
 {
   yAx.array() *= weight.array();
 
-  NUFFT2d1(M, Nx, Ny, dFdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l);
+  NUFFT2d1(dFdx, E1, E2x, E2y, E4mat, mx, my,
+	   in_c, out_r, fftwplan_c2r, yAx);
 }
 
 /* TSV */
@@ -315,51 +250,42 @@ int mfista_L1_TSV_core_nufft(double *xout,
 			     int maxiter, double eps,
 			     double *vis_r, double *vis_i, double *vis_std,
 			     double lambda_l1, double lambda_tsv,
-			     double *cinit, double *xinit,
+			     double *cinit, double *xinit, 
 			     int nonneg_flag, int box_flag, float *cl_box)
 {
   void (*soft_th_box)(VectorXd &newvec, VectorXd &vector, double eta, int box_flag, VectorXd &box);
-
-  int NN = Nx*Ny, i, iter;
-  double Qcore, Fval, Qval, c, tmpa, tmpb, l1cost, tsvcost, costtmp,
-    mu=1, munew, *rvecf;
-  fftw_complex *cvecf;
+  
+  int NN = Nx*Ny, MMh = 2*Nx*(Ny+1), i, iter;
+  double Qcore, Fval, Qval, c, tmpa, tmpb, l1cost, tsvcost, costtmp, 
+    mu=1, munew, *rvec;
+  fftw_complex *cvec;
   fftw_plan fftwplan_c2r, fftwplan_r2c;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, cost, rvec, xtmp, xnew, zvec, dfdx, dtmp, weight, xvec,
-           box, u, v, buf_diff;
-  VectorXcd yAx, vis, cvec;
-  MatrixXd E2x, E2y;
-  MatrixXcd mbuf_l, mbuf_h;
+  VectorXi mx, my;
+  VectorXd E1, cost, xtmp, xnew, zvec, dfdx, dtmp, weight, xvec, box, u, v, buf_diff;
+  VectorXcd yAx, vis;
+  MatrixXd E2x, E2y, E4mat;
 
   cout << "Memory allocation and preparations." << endl << endl;
+  
+  mx    = VectorXi::Zero(M);
+  my    = VectorXi::Zero(M);
+  E1    = VectorXd::Zero(M);
+  E2x   = MatrixXd::Zero(M,2*MSP);
+  E2y   = MatrixXd::Zero(M,2*MSP);
+  E4mat = MatrixXd::Zero(Nx,Ny);
 
-  mx      = VectorXi::Zero(M);
-  my      = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
-  E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,2*MSP);
-  E2y     = MatrixXd::Zero(M,2*MSP);
-  E4      = VectorXd::Zero(NN);
+  cost   = VectorXd::Zero(maxiter);
+  dfdx   = VectorXd::Zero(NN);
+  xnew   = VectorXd::Zero(NN);
+  xtmp   = VectorXd::Zero(NN);
+  dtmp   = VectorXd::Zero(NN);
+  box    = VectorXd::Zero(NN);
 
-  rvec    = VectorXd::Zero(4*NN);
-  cost    = VectorXd::Zero(maxiter);
-  dfdx    = VectorXd::Zero(NN);
-  xnew    = VectorXd::Zero(NN);
-  xtmp    = VectorXd::Zero(NN);
-  dtmp    = VectorXd::Zero(NN);
-  box     = VectorXd::Zero(NN);
-
-  yAx     = VectorXcd::Zero(M);
-  vis     = VectorXcd::Zero(M);
-  cvec    = VectorXcd::Zero(2*Nx*(Ny+1));
-  mbuf_l  = MatrixXcd::Zero(2*Nx+4*MSP,2*Ny+4*MSP);
-  mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
-
-  weight  = VectorXd::Zero(M);
+  yAx    = VectorXcd::Zero(M);
+  vis    = VectorXcd::Zero(M);
+  weight = VectorXd::Zero(M);
 
   buf_diff = VectorXd::Zero(Nx-1);
 
@@ -378,23 +304,38 @@ int mfista_L1_TSV_core_nufft(double *xout,
     weight(i) = 1/vis_std[i];
   }
 
-  cout << "Preparation for FFT." << endl;
+  cout << "Preparation for FFT." << endl; 
 
   // prepare for nufft
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  preNUFFT(u, v, E1, E2x, E2y, E4mat, mx, my);
 
   // for fftw
+  
+  // memory allocation (RAII)
+  std::unique_ptr<double []> rvec_wrapper(new double [4*NN]);
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(MMh * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  rvec = rvec_wrapper.get();
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
-  rvecf = &rvec[0];
-  cvecf = fftw_cast(cvec.data());
+  for(i = 0; i< MMh; i++) {cvec[i][0]=0;cvec[i][1]=0;}
+  for(i = 0; i< 4*NN; i++){rvec[i]=0;}
 
-  fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvecf, rvecf, fftw_plan_flag);
-  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvecf, cvecf, fftw_plan_flag);
-
+  fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvec, rvec, fftw_plan_flag);
+  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
+  ScopeGuard guard([&]() {
+    // cout << "deallocating c2r plan" << endl;
+    deallocate_fftw_plan(fftwplan_c2r);
+    // cout << "deallocating r2c plan" << endl;
+    deallocate_fftw_plan(fftwplan_r2c);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
+  });
   fftw_execute(fftwplan_r2c);
   fftw_execute(fftwplan_c2r);
-
+  
   // initialization
 
   if(nonneg_flag == 0)
@@ -406,7 +347,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
     return(0);
   }
 
-  cout << "Done." << endl;
+  cout << "Done." << endl; 
 
   c = *cinit;
 
@@ -415,8 +356,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   // main
 
-  costtmp = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
-			      rvec, cvec, &fftwplan_r2c, vis, weight, xvec, mbuf_h);
+  costtmp = calc_F_part_nufft(yAx, E1, E2x, E2y, E4mat, mx, my,
+			      rvec, cvec, &fftwplan_r2c, vis, weight, xvec);
 
   l1cost = xvec.lpNorm<1>();
   costtmp += lambda_l1*l1cost;
@@ -432,47 +373,47 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
     if((iter % 10) == 0){
       cout << iter+1 << " cost = " << fixed << setprecision(5)
-      << cost(iter) << ", c = " << c << endl;
+	   << cost(iter) << ", c = " << c << endl;
     }
 
-    Qcore = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
-      rvec, cvec, &fftwplan_r2c, vis, weight, zvec, mbuf_h);
+    Qcore = calc_F_part_nufft(yAx, E1, E2x, E2y, E4mat, mx, my,
+ 			      rvec, cvec, &fftwplan_r2c, vis, weight, zvec);
 
-    dF_dx_nufft(M, Nx, Ny, dfdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-      cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l);
+    dF_dx_nufft(dfdx, E1, E2x, E2y, E4mat, mx, my,
+ 		cvec, rvec, &fftwplan_c2r, weight, yAx);
 
     if( lambda_tsv > 0.0 ){
       tsvcost = TSV(Nx, Ny, zvec, buf_diff);
       Qcore += lambda_tsv*tsvcost;
 
       d_TSV(dtmp, Nx, Ny, zvec);
-      dfdx -= lambda_tsv*dtmp;
+      dfdx.array() -= lambda_tsv*dtmp.array();
     }
 
     for(i = 0; i < maxiter; i++){
-      xtmp = zvec + dfdx/c;
+      xtmp.array() = zvec.array() + dfdx.array()/c;
       soft_th_box(xnew, xtmp, lambda_l1/c, box_flag, box);
 
-      Fval = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
-        rvec, cvec, &fftwplan_r2c, vis, weight, xnew, mbuf_h);
+      Fval = calc_F_part_nufft(yAx, E1, E2x, E2y, E4mat, mx, my,
+ 			       rvec, cvec, &fftwplan_r2c, vis, weight, xnew);
 
       if( lambda_tsv > 0.0 ){
-        tsvcost = TSV(Nx, Ny, xnew, buf_diff);
-        Fval += lambda_tsv*tsvcost;
+	tsvcost = TSV(Nx, Ny, xnew, buf_diff);
+	Fval += lambda_tsv*tsvcost;
       }
 
       Qval = calc_Q_part(xnew, zvec, c, dfdx, xtmp);
       Qval += Qcore;
 
       if(Fval<=Qval) break;
-
+      
       c *= ETA;
     }
 
     c /= ETA;
 
     munew = (1+sqrt(1+4*mu*mu))/2;
-
+    
     l1cost = xnew.lpNorm<1>();
     Fval += lambda_l1*l1cost;
 
@@ -485,7 +426,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
       tmpa = 1+((mu-1)/munew);
       tmpb = ((1-mu)/munew);
 
-      zvec = tmpa * xnew + tmpb * zvec;
+      zvec.array() = tmpa * xnew.array() + tmpb * zvec.array();
 
       xvec = xnew;
     }
@@ -494,9 +435,9 @@ int mfista_L1_TSV_core_nufft(double *xout,
       tmpa = mu/munew;
       tmpb = 1-(mu/munew);
 
-      zvec = tmpa * xnew + tmpb * zvec;
+      zvec.array() = tmpa * xnew.array() + tmpb * zvec.array();
 
-      // another stopping rule
+      // another stopping rule 
       if((iter>1) && (xvec.lpNorm<1>() == 0)) break;
     }
 
@@ -527,51 +468,57 @@ int mfista_L1_TSV_core_nufft(double *xout,
 void calc_result_nufft(struct RESULT *mfista_result,
 		       int M, int Nx, int Ny, double *u_dx, double *v_dy,
 		       double *vis_r, double *vis_i, double *vis_std,
-		       double lambda_l1, double lambda_tv, double lambda_tsv,
+		       double lambda_l1, double lambda_tv, double lambda_tsv, 
 		       double *xvec)
 {
   int i, NN = Nx*Ny;
-  double tmp, *rvecf;
-  fftw_complex *cvecf;
+  double tmp, *rvec;
+  fftw_complex *cvec;
   fftw_plan fftwplan_r2c;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, weight, rvec, x, u, v, buf_diff;
-  VectorXcd yAx, vis, cvec;
-  MatrixXd E2x, E2y;
-  MatrixXcd mbuf_h;
+  VectorXi mx, my;
+  VectorXd E1, weight, x, u, v, buf_diff;
+  VectorXcd yAx, vis;
+  MatrixXd E2x, E2y, E4mat;
 
-  cout << "Memory allocation and preparations." << endl;
-
-  mx      = VectorXi::Zero(M);
-  my      = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,2*MSP);
-  E2y     = MatrixXd::Zero(M,2*MSP);
-  E4      = VectorXd::Zero(NN);
-
-  mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
+  cout << "Memory allocation and preparations." << endl; 
+  
+  mx    = VectorXi::Zero(M);
+  my    = VectorXi::Zero(M);
+  E1    = VectorXd::Zero(M);
+  E2x   = MatrixXd::Zero(M,2*MSP);
+  E2y   = MatrixXd::Zero(M,2*MSP);
+  E4mat = MatrixXd::Zero(Nx,Ny);
 
   buf_diff = VectorXd::Zero(Nx-1);
-  rvec = VectorXd::Zero(4*NN);
-  cvec = VectorXcd::Zero(2*Nx*(Ny+1));
   u = Map<VectorXd>(u_dx,M);
   v = Map<VectorXd>(v_dy,M);
   x = Map<VectorXd>(xvec,NN);
 
   // prepare for nufft
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  preNUFFT(u, v, E1, E2x, E2y, E4mat, mx, my);
 
   // for fftw
 
-  rvecf = &rvec[0];
-  cvecf = fftw_cast(cvec.data());
+  // memory allocation (RAII)
+  std::unique_ptr<double []> rvec_wrapper(new double [4*NN]);
+  std::unique_ptr<void, decltype(&deallocate_fftw_complex)> cvec_wrapper(
+    allocate_fftw_complex(2*Nx*(Ny+1) * sizeof(fftw_complex)), 
+    deallocate_fftw_complex);
+  rvec = rvec_wrapper.get();
+  cvec = reinterpret_cast<fftw_complex *>(cvec_wrapper.get());
 
-  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvecf, cvecf, fftw_plan_flag);
+  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvec, cvec, fftw_plan_flag);
+  ScopeGuard guard([&]() {
+    // cout << "deallocating r2c plan" << endl;
+    deallocate_fftw_plan(fftwplan_r2c);
+    // cout << "fftw_cleanup" << endl;
+    fftw_cleanup();
+  });
+
+  // complex malloc
 
   yAx    = VectorXcd::Zero(M);
   vis    = VectorXcd::Zero(M);
@@ -583,9 +530,9 @@ void calc_result_nufft(struct RESULT *mfista_result,
   }
 
   // computing results
-
-  tmp = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
- 			  rvec, cvec, &fftwplan_r2c, vis, weight, x, mbuf_h);
+  
+  tmp = calc_F_part_nufft(yAx, E1, E2x, E2y, E4mat, mx, my,
+ 			  rvec, cvec, &fftwplan_r2c, vis, weight, x);
 
 //   /* saving results */
 
@@ -595,11 +542,11 @@ void calc_result_nufft(struct RESULT *mfista_result,
   mfista_result->N  = NN;
   mfista_result->NX = Nx;
   mfista_result->NY = Ny;
-
+	    
   mfista_result->lambda_l1  = lambda_l1;
   mfista_result->lambda_tv  = lambda_tv;
   mfista_result->lambda_tsv = lambda_tsv;
-
+  
   mfista_result->mean_sq_error = mfista_result->sq_error/((double)M);
 
   mfista_result->l1cost   = 0;
@@ -630,7 +577,7 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
 /* main subroutine */
 
-void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
+void mfista_imaging_core_nufft(double *u_dx, double *v_dy, 
 			       double *vis_r, double *vis_i, double *vis_std,
 			       int M, int Nx, int Ny, int maxiter, double eps,
 			       double lambda_l1, double lambda_tv, double lambda_tsv,
@@ -653,7 +600,7 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
 
   if( lambda_tv == 0 ){
     iter = mfista_L1_TSV_core_nufft(xout, M, Nx, Ny, u_dx, v_dy, maxiter, epsilon, vis_r, vis_i, vis_std,
-      lambda_l1, lambda_tsv, &c, xinit, nonneg_flag, box_flag, cl_box);
+				    lambda_l1, lambda_tsv, &c, xinit, nonneg_flag, box_flag, cl_box);
   }
   //  else if( lambda_tv != 0  && lambda_tsv == 0 ){
   //    iter = mfista_L1_TV_core_nufft(xout, M, Nx, Ny, u_dx, v_dy, maxiter, epsilon, vis_r, vis_i, vis_std,
@@ -677,6 +624,6 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
   mfista_result->maxiter   = maxiter;
 
   calc_result_nufft(mfista_result, M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std,
-    lambda_l1, lambda_tv, lambda_tsv, xout);
+		    lambda_l1, lambda_tv, lambda_tsv, xout);
 
 }
