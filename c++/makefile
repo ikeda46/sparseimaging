@@ -15,13 +15,16 @@ CXX_VERSION= -std=c++17
 
 # use the following two lines to comple without PTHREAD
 # CFLAGS=-O2
-# CLIBS_FFTW = -lfftw3 
+# CLIBS_FFTW = -lfftw3
 
 # use the following two lines to enable PTHREAD choose the thread_num properly.
-CFLAGS=-O2 -DPTHREAD -DTHREAD_NUM=4 -I/usr/include/eigen3/
-CLIBS_FFTW = -lfftw3_threads -lfftw3
+# CFLAGS=-O2 -DPTHREAD -DTHREAD_NUM=4 -I/usr/include/eigen3/
+# CLIBS_FFTW = -lfftw3_threads -lfftw3
+CFLAGS=-O2 -fopenmp -I/usr/include/eigen3/
+CLIBS_FFTW = -lfftw3_omp -lfftw3
 
-CLIBS= -lm -lrt -lpthread
+# CLIBS= -lm -lrt -lpthread
+CLIBS= -lm -lrt
 
 targets = mfista_imaging_nufft mfista_imaging_fft
 object_io = mfista_io.o
