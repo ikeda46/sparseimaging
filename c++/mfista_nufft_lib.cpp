@@ -1,7 +1,9 @@
 #include "mfista.hpp"
-#include "mfista_memory.hpp"
 #include <iomanip>
-#include <memory>
+
+#ifdef _OPENMP
+  #include <omp.h>
+#endif
 
 // mfist_nufft_lib
 
@@ -20,7 +22,7 @@ int idx_fftw(int m, int Mr)
 void large2small(int Nx, int Ny, VectorXd &out_s, VectorXd &in_l,
   VectorXd &E4)
 {
-  int k, Nxh, Nyh;
+  int Nxh, Nyh;
   double MMinv;
 
   Nxh = (int)Nx/2;
@@ -28,7 +30,11 @@ void large2small(int Nx, int Ny, VectorXd &out_s, VectorXd &in_l,
 
   MMinv  = 1/((double)(4*Nx*Ny));
 
-  for(k = 0; k < Nxh; ++k){
+  //openmp
+  #ifdef _OPENMP
+    #pragma omp parallel for
+  #endif
+  for(int k = 0; k < Nxh; ++k){
 
     out_s.segment(k*Ny,Ny) <<
       (E4.segment(k*Ny,    Nyh).array())
@@ -47,14 +53,18 @@ void large2small(int Nx, int Ny, VectorXd &out_s, VectorXd &in_l,
 void small2large(int Nx, int Ny, VectorXd &out_l, VectorXd &in_s,
   VectorXd &E4)
 {
-  int k, Nxh, Nyh;
+  int Nxh, Nyh;
 
   Nxh = (int)Nx/2;
   Nyh = (int)Ny/2;
 
   out_l.setZero();
 
-  for(k = 0; k < Nxh; ++k){
+  //openmp
+  #ifdef _OPENMP
+    #pragma omp parallel for
+  #endif
+  for(int k = 0; k < Nxh; ++k){
 
     out_l.segment(2*Ny*(k+3*Nxh)+3*Nyh, Nyh) =
       (in_s.segment(k*Ny,           Nyh).array())
@@ -135,8 +145,6 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
       if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
   }
 
-//  for(k = 0; k < M; k++)  cout << idx(k) << ", " << idx_c(k) << "  " << idx(k)+idx_c(k) << endl;
-
   for(i = 0; i < Nx; i++){
 
     tmpi = (double)(i-Nx/2);
@@ -151,7 +159,6 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 }
 
 complex<double> map_0(complex<double> x){return(x);}
-
 complex<double> map_c(complex<double> x){return(conj(x));}
 
 void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
@@ -160,8 +167,9 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
   MatrixXcd &mbuf_l)
 {
-  int Mh, i, k;
-  complex<double> v0, vy, tmpc;
+  int Mh;
+//  complex<double> v0, vy, tmpc;
+  complex<double> vy, tmpc;
   complex<double> (*map_nufft)(complex<double> x);
 
   Mh =  Ny + 1;
@@ -171,8 +179,13 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   if(NU_SIGN == -1) map_nufft  = map_c;
   else              map_nufft  = map_0;
 
-  for(k = 0; k < M; k++){
-    v0 = E1(k)*(map_nufft(Fin(k)));
+  // openmp
+  #ifdef _OPENMP
+    #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
+    #pragma omp parallel for reduction(+:mbuf_l)
+  #endif
+  for(int k = 0; k < M; k++){
+    complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
     if(cover_o(k)==1)
       mbuf_l.block<2*MSP,2*MSP>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
@@ -189,7 +202,11 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   mbuf_l.block(0,2*MSP+2*Ny,2*Nx+4*MSP,1) = mbuf_l.block(0,2*MSP,2*Nx+4*MSP,1);
 
-  for(i = 0; i < Nx; i++){
+  //openmp
+  #ifdef _OPENMP
+    #pragma omp parallel for
+  #endif
+  for(int i = 0; i < Nx; i++){
     in.segment(i*Mh     ,Mh) =
       mbuf_l.block(i+2*MSP+Nx,2*MSP+Ny,1,Mh).transpose();
     in.segment((i+Nx)*Mh,Mh) =
@@ -206,8 +223,8 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
   VectorXi &mx, VectorXi &my,
  	VectorXd &in, VectorXcd &out, fftw_plan *fftwplan_r2c, VectorXd &Xin, MatrixXcd &mbuf_h)
 {
-  int Mrx, Mry, Mh, st0, ed0, stc, edc, j, k, ly;
-  double tmp, MMinv;
+  int Mrx, Mry, Mh;
+  double MMinv;
   complex<double> (*map0_nufft)(complex<double> x),(*mapc_nufft)(complex<double> x);
 
   if(NU_SIGN == -1) {map0_nufft  = map_c; mapc_nufft = map_0;}
@@ -222,18 +239,26 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
 
   fftw_execute(*fftwplan_r2c);
 
-  for(j = 0; j < Nx; j++){
-    mbuf_h.block(0,j+Nx,Mh,1) = out.segment(j*Mh,     Mh);
-    mbuf_h.block(0,j,   Mh,1) = out.segment((j+Nx)*Mh,Mh);
+  //openmp
+  #ifdef _OPENMP
+    #pragma omp parallel for
+  #endif
+  for(int i = 0; i < Nx; i++){
+    mbuf_h.block(0,i+Nx,Mh,1) = out.segment(i*Mh,     Mh);
+    mbuf_h.block(0,i,   Mh,1) = out.segment((i+Nx)*Mh,Mh);
   }
 
-  for(k = 0; k < M; k++){
+  //openmp
+  #ifdef _OPENMP
+    #pragma omp parallel for
+  #endif
+  for(int k = 0; k < M; k++){
 
-    st0 = idx_fftw( (my(k)-MSP+1),Mry);
-    ed0 = idx_fftw( (my(k)+MSP),  Mry);
+    double st0 = idx_fftw( (my(k)-MSP+1),Mry);
+    double ed0 = idx_fftw( (my(k)+MSP),  Mry);
 
-    stc = idx_fftw(-(my(k)+MSP),  Mry);
-    edc = idx_fftw(-(my(k)-MSP+1),Mry);
+    double stc = idx_fftw(-(my(k)+MSP),  Mry);
+    double edc = idx_fftw(-(my(k)-MSP+1),Mry);
 
     if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
 
@@ -253,11 +278,10 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
     }
     else{
       Fout(k) = 0;
-      for(ly = 0; ly < 2*MSP; ly++){
+      for(int ly = 0; ly < 2*MSP; ly++){
 
-        j = idx_fftw((my(k)+ly-MSP+1),Mry);
-
-        tmp = MMinv*E1(k)*E2y(k,ly);
+        int j = idx_fftw((my(k)+ly-MSP+1),Mry);
+        double tmp = MMinv*E1(k)*E2y(k,ly);
 
         if(j < (Ny+1)){
           Fout(k) +=
@@ -382,7 +406,13 @@ int mfista_L1_TSV_core_nufft(double *xout,
     weight(i) = 1/vis_std[i];
   }
 
-  cout << "Preparation for FFT." << endl;
+  //openmp
+  #ifdef _OPENMP
+    cout << "(OPENMP): Running in multi-thread with " <<
+    omp_get_max_threads() << " threads." << endl << endl;
+  #endif
+
+  cout << "Preparation for FFT.";
 
   // prepare for nufft
 
@@ -392,6 +422,13 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   rvecf = &rvec[0];
   cvecf = fftw_cast(cvec.data());
+
+  //openmp
+  #ifdef _OPENMP
+  if(fftw_init_threads()){
+    fftw_plan_with_nthreads(omp_get_max_threads());
+  }
+  #endif
 
   fftwplan_c2r = fftw_plan_dft_c2r_2d(2*Nx,2*Ny, cvecf, rvecf, fftw_plan_flag);
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvecf, cvecf, fftw_plan_flag);
@@ -410,12 +447,13 @@ int mfista_L1_TSV_core_nufft(double *xout,
     return(0);
   }
 
-  cout << "Done." << endl;
+  cout << " Done." << endl << endl;
 
   c = *cinit;
 
-  cout << "computing image with MFISTA with NUFFT." << endl;
-  cout << "stop if iter = " << maxiter << " or Delta_cost < " << eps << endl;
+  cout << "Computing image with MFISTA using NUFFT." << endl;
+  cout << "Stop if iter = " << maxiter << " or Delta_cost < " << eps
+  << endl << endl;
 
   // main
 
@@ -435,7 +473,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
     cost(iter) = costtmp;
 
     if((iter % 10) == 0){
-      cout << iter+1 << " cost = " << fixed << setprecision(5)
+      cout << std::setw(5) << iter+1 << " cost = " << fixed << setprecision(5)
       << cost(iter) << ", c = " << c << endl;
     }
 
@@ -521,6 +559,15 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   for(i = 0; i < NN; i++) xout[i] = xvec(i);
 
+  cout << "Cleaning fftw plan." << endl;
+
+  fftw_destroy_plan(fftwplan_c2r);
+  fftw_destroy_plan(fftwplan_r2c);
+
+  #ifdef _OPENMP
+    fftw_cleanup_threads();
+  #endif
+
   cout << resetiosflags(ios_base::floatfield);
 
   return(iter+1);
@@ -574,6 +621,13 @@ void calc_result_nufft(struct RESULT *mfista_result,
 
   rvecf = &rvec[0];
   cvecf = fftw_cast(cvec.data());
+
+  //openmp
+  #ifdef _OPENMP
+  if(fftw_init_threads()){
+    fftw_plan_with_nthreads(omp_get_max_threads());
+  }
+  #endif
 
   fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvecf, cvecf, fftw_plan_flag);
 
@@ -630,6 +684,12 @@ void calc_result_nufft(struct RESULT *mfista_result,
   //    mfista_result->tvcost = TV(Nx, Ny, x);
   //    mfista_result->finalcost += lambda_tv*(mfista_result->tvcost);
   //  }
+
+  fftw_destroy_plan(fftwplan_r2c);
+
+  #ifdef _OPENMP
+    fftw_cleanup_threads();
+  #endif
 }
 
 /* main subroutine */
