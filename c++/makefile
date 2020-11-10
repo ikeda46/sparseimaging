@@ -20,7 +20,7 @@ CXX_VERSION= -std=c++17
 # use the following two lines to enable PTHREAD choose the thread_num properly.
 # CFLAGS=-O2 -DPTHREAD -DTHREAD_NUM=4 -I/usr/include/eigen3/
 # CLIBS_FFTW = -lfftw3_threads -lfftw3
-CFLAGS=-O2 -fopenmp -I/usr/include/eigen3/
+CFLAGS=-O3 -fopenmp -march=native -DEIGEN_NO_DEBUG -I/usr/include/eigen3/
 CLIBS_FFTW = -lfftw3_omp -lfftw3
 
 # CLIBS= -lm -lrt -lpthread
@@ -55,10 +55,10 @@ libmfista_fft: $(object_tools2) $(object_fft2) $(object_memory2)
 	$(CXX) ${CXX_VERSION} $(CFLAGS) -shared $(object_fft2) $(object_tools2) $(object_memory2) -o $@.so $(CLIBS) $(CLIBS_FFTW) -I${EIGENLIBRARY} -Xlinker -rpath -Xlinker /usr/lib
 
 .cpp.o:
-	$(CXX) ${CXX_VERSION} -c -O2 -Wall $(CFLAGS) -I${EIGENLIBRARY} -fPIC -o $@ $<
+	$(CXX) ${CXX_VERSION} -c -Wall $(CFLAGS) -I${EIGENLIBRARY} -fPIC -o $@ $<
 
 .cpp.o2:
-	$(CXX) ${CXX_VERSION} -c -O2 -Wall $(CFLAGS) -I${EIGENLIBRARY} -fPIC -o $@ $<
+	$(CXX) ${CXX_VERSION} -c -Wall $(CFLAGS) -I${EIGENLIBRARY} -fPIC -o $@ $<
 
 clean:
 	rm -f $(targets) *.o *.o2 *.so

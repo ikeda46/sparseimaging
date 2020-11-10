@@ -31,6 +31,10 @@
 // for low precision
 #define MSP 6
 
+// 2020/09/17
+#define MSP2 12	// MSP*2
+#define MSP4 24	// MSP*4
+
 using namespace std;
 using namespace Eigen;
 
