@@ -20,7 +20,7 @@
 #define MAXITER   50000
 #define MINITER   100
 #define FGPITER   100
-#define TD        50 
+#define TD        50
 #define ETA       1.1
 #define EPS       1.0e-5
 
@@ -30,6 +30,10 @@
 
 // for low precision
 #define MSP 6
+
+// 2022/01/25
+#define MSP2 12	// MSP*2
+#define MSP4 24	// MSP*4
 
 using namespace std;
 using namespace Eigen;
@@ -110,7 +114,7 @@ extern "C" {
 #endif
 // mfista_nufft_lib
 
-void mfista_imaging_core_nufft(double *u_dx, double *v_dy, 
+void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
 			       double *vis_r, double *vis_i, double *vis_std,
 			       int M, int Nx, int Ny, int maxiter, double eps,
 			       double lambda_l1, double lambda_tv, double lambda_tsv,
@@ -120,7 +124,7 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
 
 // mfista_fft_lib
 
-void mfista_imaging_core_fft(int *u_idx, int *v_idx, 
+void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 			     double *y_r, double *y_i, double *noise_stdev,
 			     int M, int Nx, int Ny, int maxiter, double eps,
 			     double lambda_l1, double lambda_tv, double lambda_tsv,

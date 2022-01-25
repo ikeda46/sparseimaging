@@ -5,6 +5,8 @@
   #include <omp.h>
 #endif
 
+#define REDUCTIONNUM 4
+
 // mfist_nufft_lib
 
 inline fftw_complex *fftw_cast(const std::complex<double> *p)
@@ -90,7 +92,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 {
   int i, j, k;
   double taux, tauy, coeff, xix, xiy, Mrx, Mry, tmp3x, tmp3y,
-    tmpx, tmpy, pi, tmpi, tmpj, tmpcoef[2*MSP];
+    tmpx, tmpy, pi, tmpi, tmpj, tmpcoef[MSP2];
   VectorXi idx, idx_c;
 
   cover_o.setZero();
@@ -109,9 +111,9 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   tmp3x = pow((pi/Mrx),2.0)/taux;
   tmp3y = pow((pi/Mry),2.0)/tauy;
 
-  for(j = 0; j < 2*MSP; j++) tmpcoef[j] = (double)(-MSP+1+j);
+  for(j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
 
-  for(k = 0; k < M; k++){
+  for(k = 0; k < M; ++k){
 
     tmpx = round(u(k)*Mrx/(2*pi));
     tmpy = round(v(k)*Mry/(2*pi));
@@ -134,23 +136,23 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     tmpx = pi*(u(k)-xix)/(Mrx*taux);
     tmpy = pi*(v(k)-xiy)/(Mry*tauy);
 
-    for(j = 0; j < 2*MSP; j++){
+    for(j = 0; j < MSP2; ++j){
       E2x(k, j) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
       E2y(k, j) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
     }
   }
 
-  for(k = 0; k < M; k++){
+  for(k = 0; k < M; ++k){
       if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
       if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
   }
 
-  for(i = 0; i < Nx; i++){
+  for(i = 0; i < Nx; ++i){
 
     tmpi = (double)(i-Nx/2);
     tmpx = taux*tmpi*tmpi;
 
-    for(j = 0; j< Ny; j++){
+    for(j = 0; j< Ny; ++j){
       tmpj = (double)(j-Nx/2);
       tmpy = tauy*tmpj*tmpj;
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
@@ -167,9 +169,9 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
   MatrixXcd &mbuf_l)
 {
-  int Mh;
+  int Mh, threadnum;
 //  complex<double> v0, vy, tmpc;
-  complex<double> vy, tmpc;
+//  complex<double> vy, tmpc;
   complex<double> (*map_nufft)(complex<double> x);
 
   Mh =  Ny + 1;
@@ -181,36 +183,40 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   // openmp
   #ifdef _OPENMP
+
+    threadnum = omp_get_max_threads();
+    if(threadnum > REDUCTIONNUM) threadnum = REDUCTIONNUM;
+
     #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
-    #pragma omp parallel for reduction(+:mbuf_l)
+    #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
   #endif
-  for(int k = 0; k < M; k++){
+  for(int k = 0; k < M; ++k){
     complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
     if(cover_o(k)==1)
-      mbuf_l.block<2*MSP,2*MSP>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
+      mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
         0.5*v0
-        *E2x.block<1,2*MSP>(k,0).transpose()
-        *E2y.block<1,2*MSP>(k,0);
+        *E2x.block<1,MSP2>(k,0).transpose()
+        *E2y.block<1,MSP2>(k,0);
 
     if(cover_c(k)==1)
-      mbuf_l.block<2*MSP,2*MSP>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
+      mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
         0.5*(conj(v0))
-        *E2x.block<1,2*MSP>(k,0).rowwise().reverse().transpose()
-        *E2y.block<1,2*MSP>(k,0).rowwise().reverse();
+        *E2x.block<1,MSP2>(k,0).rowwise().reverse().transpose()
+        *E2y.block<1,MSP2>(k,0).rowwise().reverse();
   }
 
-  mbuf_l.block(0,2*MSP+2*Ny,2*Nx+4*MSP,1) = mbuf_l.block(0,2*MSP,2*Nx+4*MSP,1);
+  mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
 
   //openmp
   #ifdef _OPENMP
     #pragma omp parallel for
   #endif
-  for(int i = 0; i < Nx; i++){
+  for(int i = 0; i < Nx; ++i){
     in.segment(i*Mh     ,Mh) =
-      mbuf_l.block(i+2*MSP+Nx,2*MSP+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP2+Nx,MSP2+Ny,1,Mh).transpose();
     in.segment((i+Nx)*Mh,Mh) =
-      mbuf_l.block(i+2*MSP,   2*MSP+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP2,   MSP2+Ny,1,Mh).transpose();
   }
 
   fftw_execute(*fftwplan_c2r);
@@ -243,7 +249,7 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
   #ifdef _OPENMP
     #pragma omp parallel for
   #endif
-  for(int i = 0; i < Nx; i++){
+  for(int i = 0; i < Nx; ++i){
     mbuf_h.block(0,i+Nx,Mh,1) = out.segment(i*Mh,     Mh);
     mbuf_h.block(0,i,   Mh,1) = out.segment((i+Nx)*Mh,Mh);
   }
@@ -252,7 +258,7 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
   #ifdef _OPENMP
     #pragma omp parallel for
   #endif
-  for(int k = 0; k < M; k++){
+  for(int k = 0; k < M; ++k){
 
     double st0 = idx_fftw( (my(k)-MSP+1),Mry);
     double ed0 = idx_fftw( (my(k)+MSP),  Mry);
@@ -263,22 +269,22 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
     if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
 
       Fout(k) = MMinv*E1(k)*map0_nufft(
-        ((E2y.block<1,2*MSP>(k,0).transpose()*(E2x.block<1,2*MSP>(k,0))).array()
-          *(mbuf_h.block<2*MSP,2*MSP>(st0,mx(k)-MSP+1+Nx)).array()).sum()
+        ((E2y.block<1,MSP2>(k,0).transpose()*(E2x.block<1,MSP2>(k,0))).array()
+          *(mbuf_h.block<MSP2,MSP2>(st0,mx(k)-MSP+1+Nx)).array()).sum()
         );
     }
     else if((stc < edc) && stc >=0 && edc <= Mh ){
 
       Fout(k) = MMinv*E1(k)*mapc_nufft(
-        (((E2y.block<1,2*MSP>(k,0).rowwise().reverse().transpose())
-            *(E2x.block<1,2*MSP>(k,0).rowwise().reverse())).array()
-          *(mbuf_h.block<2*MSP,2*MSP>(stc,-mx(k)-MSP+Nx)).array()).sum()
+        (((E2y.block<1,MSP2>(k,0).rowwise().reverse().transpose())
+            *(E2x.block<1,MSP2>(k,0).rowwise().reverse())).array()
+          *(mbuf_h.block<MSP2,MSP2>(stc,-mx(k)-MSP+Nx)).array()).sum()
         );
 
     }
     else{
       Fout(k) = 0;
-      for(int ly = 0; ly < 2*MSP; ly++){
+      for(int ly = 0; ly < MSP2; ++ly){
 
         int j = idx_fftw((my(k)+ly-MSP+1),Mry);
         double tmp = MMinv*E1(k)*E2y(k,ly);
@@ -287,8 +293,8 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
           Fout(k) +=
             map0_nufft(
               tmp
-              *(E2x.block<1,2*MSP>(k,0).dot(
-                (mbuf_h.block<1,2*MSP>(j,mx(k)-MSP+1+Nx).transpose())))
+              *(E2x.block<1,MSP2>(k,0).dot(
+                (mbuf_h.block<1,MSP2>(j,mx(k)-MSP+1+Nx).transpose())))
               );
         }
         else{
@@ -297,8 +303,8 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
             Fout(k) +=
               mapc_nufft(
                 tmp
-                *(E2x.block<1,2*MSP>(k,0).dot(
-                  (mbuf_h.block<1,2*MSP>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
+                *(E2x.block<1,MSP2>(k,0).dot(
+                  (mbuf_h.block<1,MSP2>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
                 );
           }
         }
@@ -369,8 +375,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
   cover_c = VectorXi::Zero(M);
   cover_o = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,2*MSP);
-  E2y     = MatrixXd::Zero(M,2*MSP);
+  E2x     = MatrixXd::Zero(M,MSP2);
+  E2y     = MatrixXd::Zero(M,MSP2);
   E4      = VectorXd::Zero(NN);
 
   rvec    = VectorXd::Zero(4*NN);
@@ -384,7 +390,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
   yAx     = VectorXcd::Zero(M);
   vis     = VectorXcd::Zero(M);
   cvec    = VectorXcd::Zero(2*Nx*(Ny+1));
-  mbuf_l  = MatrixXcd::Zero(2*Nx+4*MSP,2*Ny+4*MSP);
+  mbuf_l  = MatrixXcd::Zero(2*Nx+MSP4,2*Ny+MSP4);
   mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
 
   weight  = VectorXd::Zero(M);
@@ -397,11 +403,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
   zvec = xvec;
 
   if(box_flag == 1){
-    for(i = 0; i < NN; i++) box(i) = (double)cl_box[i];
+    for(i = 0; i < NN; ++i) box(i) = (double)cl_box[i];
   }
   else box = VectorXd::Zero(NN);
 
-  for(i = 0; i < M; i++){
+  for(i = 0; i < M; ++i){
     vis(i) = complex<double>(vis_r[i],vis_i[i]);
     weight(i) = 1/vis_std[i];
   }
@@ -491,7 +497,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
       dfdx -= lambda_tsv*dtmp;
     }
 
-    for(i = 0; i < maxiter; i++){
+    for(i = 0; i < maxiter; ++i){
       xtmp = zvec + dfdx/c;
       soft_th_box(xnew, xtmp, lambda_l1/c, box_flag, box);
 
@@ -557,7 +563,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   *cinit = c;
 
-  for(i = 0; i < NN; i++) xout[i] = xvec(i);
+  for(i = 0; i < NN; ++i) xout[i] = xvec(i);
 
   cout << "Cleaning fftw plan." << endl;
 
@@ -600,8 +606,8 @@ void calc_result_nufft(struct RESULT *mfista_result,
   cover_o = VectorXi::Zero(M);
   cover_c = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,2*MSP);
-  E2y     = MatrixXd::Zero(M,2*MSP);
+  E2x     = MatrixXd::Zero(M,MSP2);
+  E2y     = MatrixXd::Zero(M,MSP2);
   E4      = VectorXd::Zero(NN);
 
   mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
@@ -635,7 +641,7 @@ void calc_result_nufft(struct RESULT *mfista_result,
   vis    = VectorXcd::Zero(M);
   weight = VectorXd::Zero(M);
 
-  for(i = 0; i < M; i++){
+  for(i = 0; i < M; ++i){
     vis(i) = complex<double>(vis_r[i],vis_i[i]);
     weight(i) = 1/vis_std[i];
   }
@@ -663,7 +669,7 @@ void calc_result_nufft(struct RESULT *mfista_result,
   mfista_result->l1cost   = 0;
   mfista_result->N_active = 0;
 
-  for(i = 0; i < NN; i++){
+  for(i = 0; i < NN; ++i){
     tmp = fabs(x(i));
     if(tmp > 0){
       mfista_result->l1cost += tmp;
@@ -709,7 +715,7 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
   // start main part */
 
   epsilon = 0;
-  for(i = 0; i < M; i++) epsilon += vis_r[i]*vis_r[i] + vis_i[i]*vis_i[i];
+  for(i = 0; i < M; ++i) epsilon += vis_r[i]*vis_r[i] + vis_i[i]*vis_i[i];
 
   epsilon *= eps/((double)M);
 
