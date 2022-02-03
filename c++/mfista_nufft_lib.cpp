@@ -256,7 +256,7 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
 
   //openmp
   #ifdef _OPENMP
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for schedule(guided)
   #endif
   for(int k = 0; k < M; ++k){
 
