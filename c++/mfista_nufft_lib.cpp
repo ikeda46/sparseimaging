@@ -1,5 +1,6 @@
 #include "mfista.hpp"
 #include <iomanip>
+#include <numeric>
 
 #ifdef _OPENMP
   #include <omp.h>
@@ -344,6 +345,125 @@ void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
 
 /* TSV */
 
+void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v_dy,
+                double *vis_r, double *vis_i, double *vis_std)
+{
+  int const Mrx = 2 * Nx;
+  int const Mry = 2 * Ny;
+  std::vector<size_t> index_array(M);
+  std::iota(index_array.begin(), index_array.end(), 0);
+  std::sort(index_array.begin(), index_array.end(),
+    [&](size_t a, size_t b) {
+      auto const u_a = round(u_dx[a] * Mrx / (2 * M_PI));
+      auto const u_b = round(u_dx[b] * Mrx / (2 * M_PI));
+      if (u_a == u_b) {
+        auto const v_a = round(v_dy[a] * Mry / (2 * M_PI));
+        auto const v_b = round(v_dy[b] * Mry / (2 * M_PI));
+        return v_a < v_b;
+      }
+      else {
+        return u_a < u_b;
+      }
+    }
+  );
+
+  #ifdef _OPENMP
+  #pragma omp parallel sections
+  {
+    #pragma omp section
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = u_dx[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          u_dx[i] = tmp[index_array[i]];
+      }
+    }
+
+    #pragma omp section
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = v_dy[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          v_dy[i] = tmp[index_array[i]];
+      }
+    }
+
+    #pragma omp section
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_r[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_r[i] = tmp[index_array[i]];
+      }
+    }
+
+    #pragma omp section
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_i[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_i[i] = tmp[index_array[i]];
+      }
+    }
+
+    #pragma omp section
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_std[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_std[i] = tmp[index_array[i]];
+      }
+    }
+  }
+  #else
+    std::vector<double> tmp(M);
+    for (size_t i = 0; i < M; ++i) {
+        tmp[i] = u_dx[i];
+    }
+    for (size_t i = 0; i < M; ++i) {
+        u_dx[i] = tmp[index_array[i]];
+    }
+
+    for (size_t i = 0; i < M; ++i) {
+        tmp[i] = v_dy[i];
+    }
+    for (size_t i = 0; i < M; ++i) {
+        v_dy[i] = tmp[index_array[i]];
+    }
+
+    for (size_t i = 0; i < M; ++i) {
+        tmp[i] = vis_r[i];
+    }
+    for (size_t i = 0; i < M; ++i) {
+        vis_r[i] = tmp[index_array[i]];
+    }
+
+    for (size_t i = 0; i < M; ++i) {
+        tmp[i] = vis_i[i];
+    }
+    for (size_t i = 0; i < M; ++i) {
+        vis_i[i] = tmp[index_array[i]];
+    }
+
+    for (size_t i = 0; i < M; ++i) {
+        tmp[i] = vis_std[i];
+    }
+    for (size_t i = 0; i < M; ++i) {
+        vis_std[i] = tmp[index_array[i]];
+    }
+  #endif
+}
+
 int mfista_L1_TSV_core_nufft(double *xout,
 			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
 			     int maxiter, double eps,
@@ -367,6 +487,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
   VectorXcd yAx, vis, cvec;
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_l, mbuf_h;
+
+  sort_input(M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std);
 
   cout << "Memory allocation and preparations." << endl << endl;
 
