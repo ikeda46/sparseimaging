@@ -354,15 +354,15 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
   std::iota(index_array.begin(), index_array.end(), 0);
   std::sort(index_array.begin(), index_array.end(),
     [&](size_t a, size_t b) {
-      auto const u_a = round(u_dx[a] * Mrx / (2 * M_PI));
-      auto const u_b = round(u_dx[b] * Mrx / (2 * M_PI));
-      if (u_a == u_b) {
-        auto const v_a = round(v_dy[a] * Mry / (2 * M_PI));
-        auto const v_b = round(v_dy[b] * Mry / (2 * M_PI));
-        return v_a < v_b;
+      auto const v_a = round(v_dy[a] * Mry / (2 * M_PI));
+      auto const v_b = round(v_dy[b] * Mry / (2 * M_PI));
+      if (v_a == v_b) {
+        auto const u_a = round(u_dx[a] * Mrx / (2 * M_PI));
+        auto const u_b = round(u_dx[b] * Mrx / (2 * M_PI));
+        return u_a < u_b;
       }
       else {
-        return u_a < u_b;
+        return v_a < v_b;
       }
     }
   );
