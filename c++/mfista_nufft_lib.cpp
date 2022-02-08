@@ -138,8 +138,8 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     tmpy = pi*(v(k)-xiy)/(Mry*tauy);
 
     for(j = 0; j < MSP2; ++j){
-      E2x(k, j) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
-      E2y(k, j) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
+      E2x(j, k) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
+      E2y(j, k) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
     }
   }
 
@@ -197,14 +197,14 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
     if(cover_o(k)==1)
       mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
         0.5*v0
-        *E2x.block<1,MSP2>(k,0).transpose()
-        *E2y.block<1,MSP2>(k,0);
+        *E2x.block<MSP2,1>(0,k)
+        *E2y.block<MSP2,1>(0,k).transpose();
 
     if(cover_c(k)==1)
       mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
         0.5*(conj(v0))
-        *E2x.block<1,MSP2>(k,0).rowwise().reverse().transpose()
-        *E2y.block<1,MSP2>(k,0).rowwise().reverse();
+        *E2x.block<MSP2,1>(0,k).colwise().reverse()
+        *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
   }
 
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
@@ -270,15 +270,15 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
     if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
 
       Fout(k) = MMinv*E1(k)*map0_nufft(
-        ((E2y.block<1,MSP2>(k,0).transpose()*(E2x.block<1,MSP2>(k,0))).array()
+        ((E2y.block<MSP2,1>(0,k)*(E2x.block<MSP2,1>(0,k).transpose())).array()
           *(mbuf_h.block<MSP2,MSP2>(st0,mx(k)-MSP+1+Nx)).array()).sum()
         );
     }
     else if((stc < edc) && stc >=0 && edc <= Mh ){
 
       Fout(k) = MMinv*E1(k)*mapc_nufft(
-        (((E2y.block<1,MSP2>(k,0).rowwise().reverse().transpose())
-            *(E2x.block<1,MSP2>(k,0).rowwise().reverse())).array()
+        (((E2y.block<MSP2,1>(0,k).colwise().reverse())
+            *(E2x.block<MSP2,1>(0,k).colwise().reverse().transpose())).array()
           *(mbuf_h.block<MSP2,MSP2>(stc,-mx(k)-MSP+Nx)).array()).sum()
         );
 
@@ -288,13 +288,13 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
       for(int ly = 0; ly < MSP2; ++ly){
 
         int j = idx_fftw((my(k)+ly-MSP+1),Mry);
-        double tmp = MMinv*E1(k)*E2y(k,ly);
+        double tmp = MMinv*E1(k)*E2y(ly,k);
 
         if(j < (Ny+1)){
           Fout(k) +=
             map0_nufft(
               tmp
-              *(E2x.block<1,MSP2>(k,0).dot(
+              *(E2x.block<MSP2,1>(0,k).transpose().dot(
                 (mbuf_h.block<1,MSP2>(j,mx(k)-MSP+1+Nx).transpose())))
               );
         }
@@ -304,7 +304,7 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
             Fout(k) +=
               mapc_nufft(
                 tmp
-                *(E2x.block<1,MSP2>(k,0).dot(
+                *(E2x.block<MSP2,1>(0,k).transpose().dot(
                   (mbuf_h.block<1,MSP2>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
                 );
           }
@@ -497,8 +497,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
   cover_c = VectorXi::Zero(M);
   cover_o = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,MSP2);
-  E2y     = MatrixXd::Zero(M,MSP2);
+  E2x     = MatrixXd::Zero(MSP2, M);
+  E2y     = MatrixXd::Zero(MSP2, M);
   E4      = VectorXd::Zero(NN);
 
   rvec    = VectorXd::Zero(4*NN);
@@ -728,8 +728,8 @@ void calc_result_nufft(struct RESULT *mfista_result,
   cover_o = VectorXi::Zero(M);
   cover_c = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,MSP2);
-  E2y     = MatrixXd::Zero(M,MSP2);
+  E2x     = MatrixXd::Zero(MSP2,M);
+  E2y     = MatrixXd::Zero(MSP2,M);
   E4      = VectorXd::Zero(NN);
 
   mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
