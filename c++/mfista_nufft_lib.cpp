@@ -114,6 +114,11 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 
   for(j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
 
+  #ifdef _OPENMP
+  #pragma omp parallel
+  {
+  #pragma omp for
+  #endif
   for(k = 0; k < M; ++k){
 
     tmpx = round(u(k)*Mrx/(2*pi));
@@ -143,11 +148,17 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     }
   }
 
+  #ifdef _OPENMP
+  #pragma omp for
+  #endif
   for(k = 0; k < M; ++k){
       if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
       if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
   }
 
+  #ifdef _OPENMP
+  #pragma omp for
+  #endif
   for(i = 0; i < Nx; ++i){
 
     tmpi = (double)(i-Nx/2);
@@ -159,6 +170,10 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
     }
   }
+
+  #ifdef _OPENMP
+  }
+  #endif
 }
 
 complex<double> map_0(complex<double> x){return(x);}
