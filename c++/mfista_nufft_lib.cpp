@@ -340,9 +340,20 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
   NUFFT2d2(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
     in_r, out_c, fftwplan_r2c, xvec, mbuf_h);
 
+  #ifdef _OPENMP
+  double sqnorm = 0;
+  #pragma omp parallel for reduction(+:sqnorm)
+  for (size_t i = 0; i < vis.size(); ++i) {
+      auto const tmp = (vis[i] - yAx[i]) * weight[i];
+      yAx[i] = tmp;
+      sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag()) / 2;
+  }
+  return sqnorm;
+  #else
   yAx = (vis.array() - yAx.array())*weight.array();
 
   return(yAx.squaredNorm()/2);
+  #endif
 }
 
 void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
