@@ -199,7 +199,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   // openmp
   #ifdef _OPENMP
-  constexpr int tile_size = MSP2 * 2;
+  constexpr int tile_size = MSP2 * 4;
   int const ncol_total = mbuf_l.cols();
   int const ntile = ncol_total / tile_size + ncol_total % tile_size;
   #pragma omp parallel for schedule(guided)
