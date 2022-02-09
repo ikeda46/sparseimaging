@@ -395,8 +395,11 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
 
   #ifdef _OPENMP
   #pragma omp parallel sections
+  #endif
   {
+    #ifdef _OPENMP
     #pragma omp section
+    #endif
     {
       std::vector<double> tmp(M);
       for (size_t i = 0; i < M; ++i) {
@@ -407,7 +410,9 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
       }
     }
 
+    #ifdef _OPENMP
     #pragma omp section
+    #endif
     {
       std::vector<double> tmp(M);
       for (size_t i = 0; i < M; ++i) {
@@ -418,7 +423,9 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
       }
     }
 
+    #ifdef _OPENMP
     #pragma omp section
+    #endif
     {
       std::vector<double> tmp(M);
       for (size_t i = 0; i < M; ++i) {
@@ -429,7 +436,9 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
       }
     }
 
+    #ifdef _OPENMP
     #pragma omp section
+    #endif
     {
       std::vector<double> tmp(M);
       for (size_t i = 0; i < M; ++i) {
@@ -440,7 +449,9 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
       }
     }
 
+    #ifdef _OPENMP
     #pragma omp section
+    #endif
     {
       std::vector<double> tmp(M);
       for (size_t i = 0; i < M; ++i) {
@@ -451,43 +462,6 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
       }
     }
   }
-  #else
-    std::vector<double> tmp(M);
-    for (size_t i = 0; i < M; ++i) {
-        tmp[i] = u_dx[i];
-    }
-    for (size_t i = 0; i < M; ++i) {
-        u_dx[i] = tmp[index_array[i]];
-    }
-
-    for (size_t i = 0; i < M; ++i) {
-        tmp[i] = v_dy[i];
-    }
-    for (size_t i = 0; i < M; ++i) {
-        v_dy[i] = tmp[index_array[i]];
-    }
-
-    for (size_t i = 0; i < M; ++i) {
-        tmp[i] = vis_r[i];
-    }
-    for (size_t i = 0; i < M; ++i) {
-        vis_r[i] = tmp[index_array[i]];
-    }
-
-    for (size_t i = 0; i < M; ++i) {
-        tmp[i] = vis_i[i];
-    }
-    for (size_t i = 0; i < M; ++i) {
-        vis_i[i] = tmp[index_array[i]];
-    }
-
-    for (size_t i = 0; i < M; ++i) {
-        tmp[i] = vis_std[i];
-    }
-    for (size_t i = 0; i < M; ++i) {
-        vis_std[i] = tmp[index_array[i]];
-    }
-  #endif
 }
 
 int mfista_L1_TSV_core_nufft(double *xout,
