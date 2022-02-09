@@ -200,7 +200,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   if (!tile_boundary.empty()) {
     // openmp should be available
     int const ntile = tile_boundary.size() - 1;
-    #pragma omp parallel for schedule(guided)
+    #pragma omp parallel for schedule(dynamic)
     for (int itile = 0; itile < ntile; ++itile) {
       for (int k = 0; k < M; ++k) {
         int const myk = my(k);
