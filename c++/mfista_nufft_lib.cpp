@@ -199,30 +199,61 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   // openmp
   #ifdef _OPENMP
+  constexpr int tile_size = MSP2;
+  int const nloop = mbuf_l.cols() / tile_size + mbuf_l.cols() % tile_size;
   #pragma omp parallel for schedule(guided)
-  for (int icol = 0; icol < mbuf_l.cols(); ++icol) {
+  for (int itile = 0; itile < nloop; ++itile) {
     for (int k = 0; k < M; ++k) {
       int const myk = my(k);
       if (cover_o(k) == 1) {
         int const col_from = myk + MSP + 1 + Ny;
         int const col_to = col_from + MSP2;
-        if (col_from <= icol && icol < col_to) {
+        int const tile_from = tile_size * itile;
+        int const tile_to = min(tile_from + tile_size, (int)mbuf_l.cols());
+        if (tile_from < col_to && col_from < tile_to) {
+          int const icol = max(tile_from, col_from);
+          int const ncol = min(tile_to, col_to) - icol;
           complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
-          mbuf_l.block<MSP2, 1>(mx(k) + MSP + 1 + Nx, icol) +=
-            0.5 * v0
-            * E2x.block<MSP2, 1>(0, k)
-            * E2y(icol - col_from, k);
+          int const ix = mx(k) + MSP + 1 + Nx;
+          if (ncol == tile_size) {
+            mbuf_l.block<MSP2, tile_size>(ix, icol) +=
+              0.5 * v0
+              * E2x.block<MSP2, 1>(0, k)
+              * E2y.block<tile_size, 1>(0, k).transpose();
+          } else {
+            for (int jcol = 0; jcol < ncol; ++jcol) {
+              mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                0.5 * v0
+                * E2x.block<MSP2, 1>(0, k)
+                * E2y(icol - col_from + jcol, k);
+            }
+          }
         }
       }
       if (cover_c(k) == 1) {
         int const col_from = - myk + MSP + Ny;
         int const col_to = col_from + MSP2;
-        if (col_from <= icol && icol < col_to) {
+        int const tile_from = tile_size * itile;
+        int const tile_to = min(tile_from + tile_size, (int)mbuf_l.cols());
+        if (tile_from < col_to && col_from < tile_to) {
+          int const icol = max(tile_from, col_from);
+          int const ncol = min(tile_to, col_to) - icol;
           complex<double> v0 = conj(E1(k)*(map_nufft(Fin(k))));
-          mbuf_l.block<MSP2, 1>(- mx(k) + MSP + Nx, icol) +=
-            0.5 * v0
-            * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-            * E2y(col_to - icol - 1, k);
+          int const ix = - mx(k) + MSP + Nx;
+          if (ncol == tile_size) {
+            mbuf_l.block<MSP2, tile_size>(ix, icol) +=
+              0.5 * v0
+              * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+              * E2y.block<tile_size, 1>(0, k).colwise().reverse().transpose();
+          } else {
+            int const offset = max(0, tile_from - col_from);
+            for (int jcol = 0; jcol < ncol; ++jcol) {
+              mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                0.5 * v0
+                * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+                * E2y(MSP2 - 1 - offset - jcol, k);
+            }
+          }
         }
       }
     }
