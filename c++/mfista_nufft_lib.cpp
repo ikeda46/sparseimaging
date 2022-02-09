@@ -199,8 +199,6 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   if (!tile_boundary.empty()) {
     // openmp should be available
-    constexpr int tile_size = MSP2 * 4;
-    int const ncol_total = mbuf_l.cols();
     int const ntile = tile_boundary.size() - 1;
     #pragma omp parallel for schedule(guided)
     for (int itile = 0; itile < ntile; ++itile) {
@@ -533,8 +531,8 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
 void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
 {
     // innermost tile size and number of tiles
-    int tile_size = MSP2;
-    int const nadd_center = 4;
+    int tile_size = MSP2 / 2;
+    int const nadd_center = 8;
 
     // 4-thread reduction seems to be efficient for less number of cores
     if (nthreads < 12 || npixels < tile_size * nadd_center * 2 * 2) {
