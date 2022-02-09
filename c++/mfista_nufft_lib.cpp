@@ -519,6 +519,72 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
   }
 }
 
+
+void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
+{
+    // innermost tile size and number of tiles
+    int tile_size = MSP2;
+    int const nadd_center = 4;
+
+    // 4-thread reduction seems to be efficient for less number of cores
+    if (nthreads < 12 || npixels < tile_size * nadd_center * 2 * 2) {
+        return;
+    }
+
+
+    int const middle = npixels / 2 + npixels % 2;
+    int left = middle;
+    int right = middle;
+    int np = npixels;
+
+    // innermost tiles
+    tile_boundary.push_back(middle);
+    for (int i = 0; i < nadd_center; ++i) {
+        left -= tile_size;
+        tile_boundary.insert(tile_boundary.begin(), left);
+        right += tile_size;
+        tile_boundary.push_back(right);
+        np -= 2 * tile_size;
+    }
+
+    // gradually increase tile size
+
+    int const nadd = 2;
+    while (left > 0) {
+        tile_size *= 2;
+        for (int i = 0; i < nadd; ++i) {
+            left -= tile_size;
+            right += tile_size;
+            if (left - tile_size <= 0) {
+                left = 0;
+                right = npixels;
+                break;
+            } else {
+                tile_boundary.insert(tile_boundary.begin(), left);
+                tile_boundary.push_back(right);
+            }
+        }
+    }
+
+    tile_boundary.insert(tile_boundary.begin(), 0);
+    tile_boundary.push_back(npixels);
+
+    // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
+    // std::cout << "tile_boundary: " << std::endl;
+    // char delim = '[';
+    // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
+    //     std::cout << delim << " " << *i;
+    //     delim = ',';
+    // }
+    // std::cout << " ]" << std::endl;
+    // std::cout << "   ";
+    // for (size_t i = 0; i < tile_boundary.size() - 1; ++i) {
+    //     std::cout << tile_boundary[i + 1] - tile_boundary[i] << "   ";
+    // }
+    // std::cout << std::endl;
+}
+
+
 int mfista_L1_TSV_core_nufft(double *xout,
 			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
 			     int maxiter, double eps,
@@ -590,9 +656,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
   }
 
   //openmp
+  std::vector<int> tile_boundary;
   #ifdef _OPENMP
     cout << "(OPENMP): Running in multi-thread with " <<
     omp_get_max_threads() << " threads." << endl << endl;
+    configure_tile(mbuf_l.cols(), omp_get_max_threads(), tile_boundary);
   #endif
 
   cout << "Preparation for FFT.";
