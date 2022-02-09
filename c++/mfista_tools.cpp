@@ -111,6 +111,29 @@ void d_TSV(VectorXd &dvec, int Nx, int Ny, VectorXd &xvec)
 
   dvec = VectorXd::Zero(Nx*Ny);
 
+  #ifdef _OPENMP
+  #pragma omp parallel
+  {
+  #pragma omp for
+  for(j = 0; j < Ny; j++){
+    dvec.segment(Nx*j,(Nx-1))
+      += 2*(xvec.segment(Nx*j,(Nx-1))-xvec.segment(Nx*j+1,(Nx-1)));
+    dvec.segment(Nx*j+1,(Nx-1))
+      += 2*(xvec.segment(Nx*j+1,(Nx-1))-xvec.segment(Nx*j,(Nx-1)));
+  }
+
+  #pragma omp for
+  for(j = 0; j < Ny-1; j++){
+    dvec.segment(Nx*j,Nx)
+      += 2*(xvec.segment(Nx*j,Nx)-xvec.segment(Nx*(j+1),Nx));
+  }
+  #pragma omp for
+  for(j = 0; j < Ny-1; j++){
+    dvec.segment(Nx*(j+1),Nx)
+      += 2*(xvec.segment(Nx*(j+1),Nx)-xvec.segment(Nx*j,Nx));
+  }
+  }
+  #else
   for(j = 0; j < Ny; j++){
     dvec.segment(Nx*j,(Nx-1))
       += 2*(xvec.segment(Nx*j,(Nx-1))-xvec.segment(Nx*j+1,(Nx-1)));
@@ -124,6 +147,7 @@ void d_TSV(VectorXd &dvec, int Nx, int Ny, VectorXd &xvec)
     dvec.segment(Nx*(j+1),Nx)
       += 2*(xvec.segment(Nx*(j+1),Nx)-xvec.segment(Nx*j,Nx));
   }
+  #endif
 }
 
 // utility for time measurement
