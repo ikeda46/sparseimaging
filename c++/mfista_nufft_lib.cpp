@@ -199,13 +199,35 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   // openmp
   #ifdef _OPENMP
-
-    threadnum = omp_get_max_threads();
-    if(threadnum > REDUCTIONNUM) threadnum = REDUCTIONNUM;
-
-    #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
-    #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
-  #endif
+  #pragma omp parallel for schedule(guided)
+  for (int icol = 0; icol < mbuf_l.cols(); ++icol) {
+    for (int k = 0; k < M; ++k) {
+      int const myk = my(k);
+      if (cover_o(k) == 1) {
+        int const col_from = myk + MSP + 1 + Ny;
+        int const col_to = col_from + MSP2;
+        if (col_from <= icol && icol < col_to) {
+          complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
+          mbuf_l.block<MSP2, 1>(mx(k) + MSP + 1 + Nx, icol) +=
+            0.5 * v0
+            * E2x.block<MSP2, 1>(0, k)
+            * E2y(icol - col_from, k);
+        }
+      }
+      if (cover_c(k) == 1) {
+        int const col_from = - myk + MSP + Ny;
+        int const col_to = col_from + MSP2;
+        if (col_from <= icol && icol < col_to) {
+          complex<double> v0 = conj(E1(k)*(map_nufft(Fin(k))));
+          mbuf_l.block<MSP2, 1>(- mx(k) + MSP + Nx, icol) +=
+            0.5 * v0
+            * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+            * E2y(col_to - icol - 1, k);
+        }
+      }
+    }
+  }
+  #else
   for(int k = 0; k < M; ++k){
     complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
@@ -221,6 +243,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
         *E2x.block<MSP2,1>(0,k).colwise().reverse()
         *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
   }
+  #endif
 
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
 
