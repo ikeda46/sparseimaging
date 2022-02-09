@@ -199,7 +199,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   // openmp
   #ifdef _OPENMP
-  constexpr int tile_size = MSP2;
+  constexpr int tile_size = MSP2 * 2;
   int const ncol_total = mbuf_l.cols();
   int const ntile = ncol_total / tile_size + ncol_total % tile_size;
   #pragma omp parallel for schedule(guided)
@@ -216,11 +216,11 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
           int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
           complex<double> v0half = 0.5 * E1(k)*(map_nufft(Fin(k)));
           int const ix = mx(k) + MSP + 1 + Nx;
-          if (ncol == tile_size) {
-            mbuf_l.block<MSP2, tile_size>(ix, icol) +=
+          if (ncol == MSP2) {
+            mbuf_l.block<MSP2, MSP2>(ix, icol) +=
               v0half
               * E2x.block<MSP2, 1>(0, k)
-              * E2y.block<tile_size, 1>(0, k).transpose();
+              * E2y.block<MSP2, 1>(0, k).transpose();
           } else {
             for (int jcol = 0; jcol < ncol; ++jcol) {
               mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
@@ -241,11 +241,11 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
           int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
           complex<double> v0half = 0.5 * conj(E1(k)*(map_nufft(Fin(k))));
           int const ix = - mx(k) + MSP + Nx;
-          if (ncol == tile_size) {
-            mbuf_l.block<MSP2, tile_size>(ix, icol) +=
+          if (ncol == MSP2) {
+            mbuf_l.block<MSP2, MSP2>(ix, icol) +=
               v0half
               * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-              * E2y.block<tile_size, 1>(0, k).colwise().reverse().transpose();
+              * E2y.block<MSP2, 1>(0, k).colwise().reverse().transpose();
           } else {
             int const offset = max(0, tile_from - col_from);
             for (int jcol = 0; jcol < ncol; ++jcol) {
