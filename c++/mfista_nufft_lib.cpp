@@ -183,7 +183,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
   VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
-  MatrixXcd &mbuf_l)
+  MatrixXcd &mbuf_l, std::vector<int> const &tile_boundary)
 {
   int Mh, threadnum;
 //  complex<double> v0, vy, tmpc;
@@ -197,85 +197,94 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   if(NU_SIGN == -1) map_nufft  = map_c;
   else              map_nufft  = map_0;
 
-  // openmp
-  #ifdef _OPENMP
-  constexpr int tile_size = MSP2 * 4;
-  int const ncol_total = mbuf_l.cols();
-  int const ntile = ncol_total / tile_size + ncol_total % tile_size;
-  #pragma omp parallel for schedule(guided)
-  for (int itile = 0; itile < ntile; ++itile) {
-    for (int k = 0; k < M; ++k) {
-      int const myk = my(k);
-      if (cover_o(k) == 1) {
-        int const col_from = myk + MSP + 1 + Ny;
-        int const col_to = col_from + MSP2;
-        int const tile_from = tile_size * itile;
-        int const tile_to = (itile != ntile - 1) ? tile_from + tile_size : ncol_total;
-        if (tile_from < col_to && col_from < tile_to) {
-          int const icol = (tile_from > col_from) ? tile_from : col_from;
-          int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
-          complex<double> v0half = 0.5 * E1(k)*(map_nufft(Fin(k)));
-          int const ix = mx(k) + MSP + 1 + Nx;
-          if (ncol == MSP2) {
-            mbuf_l.block<MSP2, MSP2>(ix, icol) +=
-              v0half
-              * E2x.block<MSP2, 1>(0, k)
-              * E2y.block<MSP2, 1>(0, k).transpose();
-          } else {
-            for (int jcol = 0; jcol < ncol; ++jcol) {
-              mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+  if (!tile_boundary.empty()) {
+    // openmp should be available
+    constexpr int tile_size = MSP2 * 4;
+    int const ncol_total = mbuf_l.cols();
+    int const ntile = tile_boundary.size() - 1;
+    #pragma omp parallel for schedule(guided)
+    for (int itile = 0; itile < ntile; ++itile) {
+      for (int k = 0; k < M; ++k) {
+        int const myk = my(k);
+        if (cover_o(k) == 1) {
+          int const col_from = myk + MSP + 1 + Ny;
+          int const col_to = col_from + MSP2;
+          int const tile_from = tile_boundary[itile];
+          int const tile_to = tile_boundary[itile + 1];
+          if (tile_from < col_to && col_from < tile_to) {
+            int const icol = (tile_from > col_from) ? tile_from : col_from;
+            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
+            complex<double> v0half = 0.5 * E1(k)*(map_nufft(Fin(k)));
+            int const ix = mx(k) + MSP + 1 + Nx;
+            if (ncol == MSP2) {
+              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
                 v0half
                 * E2x.block<MSP2, 1>(0, k)
-                * E2y(icol - col_from + jcol, k);
+                * E2y.block<MSP2, 1>(0, k).transpose();
+            } else {
+              for (int jcol = 0; jcol < ncol; ++jcol) {
+                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                  v0half
+                  * E2x.block<MSP2, 1>(0, k)
+                  * E2y(icol - col_from + jcol, k);
+              }
             }
           }
         }
-      }
-      if (cover_c(k) == 1) {
-        int const col_from = - myk + MSP + Ny;
-        int const col_to = col_from + MSP2;
-        int const tile_from = tile_size * itile;
-        int const tile_to = (itile != ntile - 1) ? tile_from + tile_size : ncol_total;
-        if (tile_from < col_to && col_from < tile_to) {
-          int const icol = (tile_from > col_from) ? tile_from : col_from;
-          int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
-          complex<double> v0half = 0.5 * conj(E1(k)*(map_nufft(Fin(k))));
-          int const ix = - mx(k) + MSP + Nx;
-          if (ncol == MSP2) {
-            mbuf_l.block<MSP2, MSP2>(ix, icol) +=
-              v0half
-              * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-              * E2y.block<MSP2, 1>(0, k).colwise().reverse().transpose();
-          } else {
-            int const offset = max(0, tile_from - col_from);
-            for (int jcol = 0; jcol < ncol; ++jcol) {
-              mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+        if (cover_c(k) == 1) {
+          int const col_from = - myk + MSP + Ny;
+          int const col_to = col_from + MSP2;
+          int const tile_from = tile_boundary[itile];
+          int const tile_to = tile_boundary[itile + 1];
+          if (tile_from < col_to && col_from < tile_to) {
+            int const icol = (tile_from > col_from) ? tile_from : col_from;
+            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
+            complex<double> v0half = 0.5 * conj(E1(k)*(map_nufft(Fin(k))));
+            int const ix = - mx(k) + MSP + Nx;
+            if (ncol == MSP2) {
+              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
                 v0half
                 * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-                * E2y(MSP2 - 1 - offset - jcol, k);
+                * E2y.block<MSP2, 1>(0, k).colwise().reverse().transpose();
+            } else {
+              int const offset = max(0, tile_from - col_from);
+              for (int jcol = 0; jcol < ncol; ++jcol) {
+                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                  v0half
+                  * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+                  * E2y(MSP2 - 1 - offset - jcol, k);
+              }
             }
           }
         }
       }
     }
-  }
-  #else
-  for(int k = 0; k < M; ++k){
-    complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
+  } else {
+    // openmp
+    #ifdef _OPENMP
 
-    if(cover_o(k)==1)
-      mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
-        0.5*v0
-        *E2x.block<MSP2,1>(0,k)
-        *E2y.block<MSP2,1>(0,k).transpose();
+      threadnum = omp_get_max_threads();
+      if(threadnum > REDUCTIONNUM) threadnum = REDUCTIONNUM;
 
-    if(cover_c(k)==1)
-      mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
-        0.5*(conj(v0))
-        *E2x.block<MSP2,1>(0,k).colwise().reverse()
-        *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+      #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
+      #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
+    #endif
+    for(int k = 0; k < M; ++k){
+      complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
+
+      if(cover_o(k)==1)
+        mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
+          0.5*v0
+          *E2x.block<MSP2,1>(0,k)
+          *E2y.block<MSP2,1>(0,k).transpose();
+
+      if(cover_c(k)==1)
+        mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
+          0.5*(conj(v0))
+          *E2x.block<MSP2,1>(0,k).colwise().reverse()
+          *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+    }
   }
-  #endif
 
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
 
@@ -416,12 +425,13 @@ void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
 		 VectorXd &E4,
 		 VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
 		 VectorXcd &in_c, VectorXd &out_r, fftw_plan *fftwplan_c2r,
-		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l)
+		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l,
+         std::vector<int> const &tile_boundary)
 {
   yAx.array() *= weight.array();
 
   NUFFT2d1(M, Nx, Ny, dFdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l);
+	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l, tile_boundary);
 }
 
 /* TSV */
@@ -732,7 +742,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
       rvec, cvec, &fftwplan_r2c, vis, weight, zvec, mbuf_h);
 
     dF_dx_nufft(M, Nx, Ny, dfdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-      cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l);
+      cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l, tile_boundary);
 
     if( lambda_tsv > 0.0 ){
       tsvcost = TSV(Nx, Ny, zvec, buf_diff);
