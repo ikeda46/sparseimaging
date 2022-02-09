@@ -1,5 +1,6 @@
 #include "mfista.hpp"
 #include <iomanip>
+#include <numeric>
 
 #ifdef _OPENMP
   #include <omp.h>
@@ -113,6 +114,11 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 
   for(j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
 
+  #ifdef _OPENMP
+  #pragma omp parallel
+  {
+  #pragma omp for
+  #endif
   for(k = 0; k < M; ++k){
 
     tmpx = round(u(k)*Mrx/(2*pi));
@@ -137,16 +143,22 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     tmpy = pi*(v(k)-xiy)/(Mry*tauy);
 
     for(j = 0; j < MSP2; ++j){
-      E2x(k, j) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
-      E2y(k, j) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
+      E2x(j, k) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
+      E2y(j, k) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
     }
   }
 
+  #ifdef _OPENMP
+  #pragma omp for
+  #endif
   for(k = 0; k < M; ++k){
       if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
       if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
   }
 
+  #ifdef _OPENMP
+  #pragma omp for
+  #endif
   for(i = 0; i < Nx; ++i){
 
     tmpi = (double)(i-Nx/2);
@@ -158,6 +170,10 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
     }
   }
+
+  #ifdef _OPENMP
+  }
+  #endif
 }
 
 complex<double> map_0(complex<double> x){return(x);}
@@ -196,14 +212,14 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
     if(cover_o(k)==1)
       mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
         0.5*v0
-        *E2x.block<1,MSP2>(k,0).transpose()
-        *E2y.block<1,MSP2>(k,0);
+        *E2x.block<MSP2,1>(0,k)
+        *E2y.block<MSP2,1>(0,k).transpose();
 
     if(cover_c(k)==1)
       mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
         0.5*(conj(v0))
-        *E2x.block<1,MSP2>(k,0).rowwise().reverse().transpose()
-        *E2y.block<1,MSP2>(k,0).rowwise().reverse();
+        *E2x.block<MSP2,1>(0,k).colwise().reverse()
+        *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
   }
 
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
@@ -269,15 +285,15 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
     if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
 
       Fout(k) = MMinv*E1(k)*map0_nufft(
-        ((E2y.block<1,MSP2>(k,0).transpose()*(E2x.block<1,MSP2>(k,0))).array()
+        ((E2y.block<MSP2,1>(0,k)*(E2x.block<MSP2,1>(0,k).transpose())).array()
           *(mbuf_h.block<MSP2,MSP2>(st0,mx(k)-MSP+1+Nx)).array()).sum()
         );
     }
     else if((stc < edc) && stc >=0 && edc <= Mh ){
 
       Fout(k) = MMinv*E1(k)*mapc_nufft(
-        (((E2y.block<1,MSP2>(k,0).rowwise().reverse().transpose())
-            *(E2x.block<1,MSP2>(k,0).rowwise().reverse())).array()
+        (((E2y.block<MSP2,1>(0,k).colwise().reverse())
+            *(E2x.block<MSP2,1>(0,k).colwise().reverse().transpose())).array()
           *(mbuf_h.block<MSP2,MSP2>(stc,-mx(k)-MSP+Nx)).array()).sum()
         );
 
@@ -287,13 +303,13 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
       for(int ly = 0; ly < MSP2; ++ly){
 
         int j = idx_fftw((my(k)+ly-MSP+1),Mry);
-        double tmp = MMinv*E1(k)*E2y(k,ly);
+        double tmp = MMinv*E1(k)*E2y(ly,k);
 
         if(j < (Ny+1)){
           Fout(k) +=
             map0_nufft(
               tmp
-              *(E2x.block<1,MSP2>(k,0).dot(
+              *(E2x.block<MSP2,1>(0,k).transpose().dot(
                 (mbuf_h.block<1,MSP2>(j,mx(k)-MSP+1+Nx).transpose())))
               );
         }
@@ -303,7 +319,7 @@ void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
             Fout(k) +=
               mapc_nufft(
                 tmp
-                *(E2x.block<1,MSP2>(k,0).dot(
+                *(E2x.block<MSP2,1>(0,k).transpose().dot(
                   (mbuf_h.block<1,MSP2>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
                 );
           }
@@ -324,9 +340,20 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
   NUFFT2d2(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
     in_r, out_c, fftwplan_r2c, xvec, mbuf_h);
 
+  #ifdef _OPENMP
+  double sqnorm = 0;
+  #pragma omp parallel for reduction(+:sqnorm)
+  for (size_t i = 0; i < vis.size(); ++i) {
+      auto const tmp = (vis[i] - yAx[i]) * weight[i];
+      yAx[i] = tmp;
+      sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag()) / 2;
+  }
+  return sqnorm;
+  #else
   yAx = (vis.array() - yAx.array())*weight.array();
 
   return(yAx.squaredNorm()/2);
+  #endif
 }
 
 void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
@@ -343,6 +370,99 @@ void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
 }
 
 /* TSV */
+
+void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v_dy,
+                double *vis_r, double *vis_i, double *vis_std)
+{
+  int const Mrx = 2 * Nx;
+  int const Mry = 2 * Ny;
+  std::vector<size_t> index_array(M);
+  std::iota(index_array.begin(), index_array.end(), 0);
+  std::sort(index_array.begin(), index_array.end(),
+    [&](size_t a, size_t b) {
+      auto const v_a = round(v_dy[a] * Mry / (2 * M_PI));
+      auto const v_b = round(v_dy[b] * Mry / (2 * M_PI));
+      if (v_a == v_b) {
+        auto const u_a = round(u_dx[a] * Mrx / (2 * M_PI));
+        auto const u_b = round(u_dx[b] * Mrx / (2 * M_PI));
+        return u_a < u_b;
+      }
+      else {
+        return v_a < v_b;
+      }
+    }
+  );
+
+  #ifdef _OPENMP
+  #pragma omp parallel sections
+  #endif
+  {
+    #ifdef _OPENMP
+    #pragma omp section
+    #endif
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = u_dx[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          u_dx[i] = tmp[index_array[i]];
+      }
+    }
+
+    #ifdef _OPENMP
+    #pragma omp section
+    #endif
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = v_dy[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          v_dy[i] = tmp[index_array[i]];
+      }
+    }
+
+    #ifdef _OPENMP
+    #pragma omp section
+    #endif
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_r[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_r[i] = tmp[index_array[i]];
+      }
+    }
+
+    #ifdef _OPENMP
+    #pragma omp section
+    #endif
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_i[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_i[i] = tmp[index_array[i]];
+      }
+    }
+
+    #ifdef _OPENMP
+    #pragma omp section
+    #endif
+    {
+      std::vector<double> tmp(M);
+      for (size_t i = 0; i < M; ++i) {
+          tmp[i] = vis_std[i];
+      }
+      for (size_t i = 0; i < M; ++i) {
+          vis_std[i] = tmp[index_array[i]];
+      }
+    }
+  }
+}
 
 int mfista_L1_TSV_core_nufft(double *xout,
 			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
@@ -368,6 +488,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_l, mbuf_h;
 
+  sort_input(M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std);
+
   cout << "Memory allocation and preparations." << endl << endl;
 
   mx      = VectorXi::Zero(M);
@@ -375,8 +497,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
   cover_c = VectorXi::Zero(M);
   cover_o = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,MSP2);
-  E2y     = MatrixXd::Zero(M,MSP2);
+  E2x     = MatrixXd::Zero(MSP2, M);
+  E2y     = MatrixXd::Zero(MSP2, M);
   E4      = VectorXd::Zero(NN);
 
   rvec    = VectorXd::Zero(4*NN);
@@ -606,8 +728,8 @@ void calc_result_nufft(struct RESULT *mfista_result,
   cover_o = VectorXi::Zero(M);
   cover_c = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(M,MSP2);
-  E2y     = MatrixXd::Zero(M,MSP2);
+  E2x     = MatrixXd::Zero(MSP2,M);
+  E2y     = MatrixXd::Zero(MSP2,M);
   E4      = VectorXd::Zero(NN);
 
   mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
