@@ -284,7 +284,14 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
     }
   }
 
+  #ifdef _OPENMP
+  #pragma omp parallel for
+  for (size_t i = 0; i < mbuf_l.rows(); ++i) {
+      mbuf_l(i, MSP2 + 2 * Ny) = mbuf_l(i, MSP2);
+  }
+  #else
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
+  #endif
 
   //openmp
   #ifdef _OPENMP
