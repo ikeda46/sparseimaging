@@ -538,14 +538,13 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
 void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
 {
     // innermost tile size and number of tiles
-    int tile_size = MSP2 / 2;
-    int const nadd_center = 8;
+    int tile_size = MSP; // MSP = MSP2 / 2;
+    int const nadd_center = nthreads / 3;
 
     // 4-thread reduction seems to be efficient for less number of cores
     if (nthreads < 12 || npixels < tile_size * nadd_center * 2 * 2) {
         return;
     }
-
 
     int const middle = npixels / 2 + npixels % 2;
     int left = middle;
@@ -563,7 +562,6 @@ void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
     }
 
     // gradually increase tile size
-
     int const nadd = 2;
     while (left > 0) {
         tile_size *= 2;
@@ -585,7 +583,7 @@ void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
     tile_boundary.push_back(npixels);
 
     // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
-    // std::cout << "tile_boundary: " << std::endl;
+    // std::cout << "tile_boundary: " << tile_boundary.size() << " tiles" << std::endl;
     // char delim = '[';
     // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
     //     std::cout << delim << " " << *i;
