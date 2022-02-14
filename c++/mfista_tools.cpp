@@ -14,7 +14,7 @@ double calc_Q_part(VectorXd &xvec1, VectorXd &xvec2,
   #ifdef _OPENMP
   double term = 0;
   #pragma omp parallel for reduction(+:term)
-  for (size_t i = 0; i < xvec1.size(); ++i)
+  for (int i = 0; i < xvec1.size(); ++i)
   {
     double tmp = xvec1[i] - xvec2[i];
     buf_vec[i] = tmp;

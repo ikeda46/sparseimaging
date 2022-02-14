@@ -284,7 +284,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
 
   #ifdef _OPENMP
   #pragma omp parallel for
-  for (size_t i = 0; i < mbuf_l.rows(); ++i) {
+  for (int i = 0; i < mbuf_l.rows(); ++i) {
       mbuf_l(i, MSP2 + 2 * Ny) = mbuf_l(i, MSP2);
   }
   #else
@@ -410,7 +410,7 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
   #ifdef _OPENMP
   double sqnorm = 0;
   #pragma omp parallel for reduction(+:sqnorm)
-  for (size_t i = 0; i < vis.size(); ++i) {
+  for (int i = 0; i < vis.size(); ++i) {
       auto const tmp = (vis[i] - yAx[i]) * weight[i];
       yAx[i] = tmp;
       sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag()) / 2;
@@ -470,10 +470,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = u_dx[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           u_dx[i] = tmp[index_array[i]];
       }
     }
@@ -483,10 +483,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = v_dy[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           v_dy[i] = tmp[index_array[i]];
       }
     }
@@ -496,10 +496,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_r[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_r[i] = tmp[index_array[i]];
       }
     }
@@ -509,10 +509,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_i[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_i[i] = tmp[index_array[i]];
       }
     }
@@ -522,10 +522,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_std[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_std[i] = tmp[index_array[i]];
       }
     }
@@ -538,9 +538,12 @@ void configure_tile(
     VectorXi const &my, VectorXi const &cover_o, VectorXi const &cover_c,
     std::vector<int> &tile_boundary)
 {
+    assert(nthreads > 0);
+    assert(npixels > 0);
+
     // make histogram
     std::vector<unsigned long> hist(npixels, 0ul);
-    for (size_t k = 0; k < my.size(); ++k) {
+    for (int k = 0; k < my.size(); ++k) {
         int const myk = my(k);
         if (cover_o(k)) {
             int const col_from = myk + MSP + 1 + Ny;
@@ -566,7 +569,7 @@ void configure_tile(
     tile_boundary.clear();
     tile_boundary.push_back(0);
     unsigned long count = 0;
-    for (int i = 0; i < npixels && tile_boundary.size() < nthreads; ++i) {
+    for (int i = 0; i < npixels && tile_boundary.size() < (size_t)nthreads; ++i) {
         if (count > ndata) {
             tile_boundary.push_back(i);
             count = 0;
