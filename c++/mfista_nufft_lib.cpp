@@ -91,9 +91,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
   VectorXd &E4, VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c)
 {
-  int i, j, k;
-  double taux, tauy, coeff, xix, xiy, Mrx, Mry, tmp3x, tmp3y,
-    tmpx, tmpy, pi, tmpi, tmpj, tmpcoef[MSP2];
+  double taux, tauy, coeff, Mrx, Mry, tmp3x, tmp3y, pi, tmpcoef[MSP2];
   VectorXi idx, idx_c;
 
   cover_o.setZero();
@@ -112,23 +110,23 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   tmp3x = pow((pi/Mrx),2.0)/taux;
   tmp3y = pow((pi/Mry),2.0)/tauy;
 
-  for(j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
+  for(int j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
 
   #ifdef _OPENMP
   #pragma omp parallel
   {
   #pragma omp for
   #endif
-  for(k = 0; k < M; ++k){
+  for(int k = 0; k < M; ++k){
 
-    tmpx = round(u(k)*Mrx/(2*pi));
-    tmpy = round(v(k)*Mry/(2*pi));
+    double tmpx = round(u(k)*Mrx/(2*pi));
+    double tmpy = round(v(k)*Mry/(2*pi));
 
     mx(k) = (int)tmpx;
     my(k) = (int)tmpy;
 
-    xix = (2*pi*tmpx)/Mrx;
-    xiy = (2*pi*tmpy)/Mry;
+    double xix = (2*pi*tmpx)/Mrx;
+    double xiy = (2*pi*tmpy)/Mry;
 
     /* E1 */
 
@@ -142,7 +140,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     tmpx = pi*(u(k)-xix)/(Mrx*taux);
     tmpy = pi*(v(k)-xiy)/(Mry*tauy);
 
-    for(j = 0; j < MSP2; ++j){
+    for(int j = 0; j < MSP2; ++j){
       E2x(j, k) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
       E2y(j, k) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
     }
@@ -151,7 +149,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   #ifdef _OPENMP
   #pragma omp for
   #endif
-  for(k = 0; k < M; ++k){
+  for(int k = 0; k < M; ++k){
       if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
       if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
   }
@@ -159,14 +157,14 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   #ifdef _OPENMP
   #pragma omp for
   #endif
-  for(i = 0; i < Nx; ++i){
+  for(int i = 0; i < Nx; ++i){
 
-    tmpi = (double)(i-Nx/2);
-    tmpx = taux*tmpi*tmpi;
+    double tmpi = (double)(i-Nx/2);
+    double tmpx = taux*tmpi*tmpi;
 
-    for(j = 0; j< Ny; ++j){
-      tmpj = (double)(j-Nx/2);
-      tmpy = tauy*tmpj*tmpj;
+    for(int j = 0; j< Ny; ++j){
+      double tmpj = (double)(j-Nx/2);
+      double tmpy = tauy*tmpj*tmpj;
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
     }
   }
