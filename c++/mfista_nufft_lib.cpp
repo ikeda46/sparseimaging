@@ -583,7 +583,73 @@ void configure_tile(int npixels, int nthreads, std::vector<int> &tile_boundary)
     tile_boundary.push_back(npixels);
 
     // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
-    // std::cout << "tile_boundary: " << tile_boundary.size() << " tiles" << std::endl;
+    // std::cout << "tile_boundary: " << tile_boundary.size() << " boundaries" << std::endl;
+    // char delim = '[';
+    // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
+    //     std::cout << delim << " " << *i;
+    //     delim = ',';
+    // }
+    // std::cout << " ]" << std::endl;
+    // std::cout << "   ";
+    // for (size_t i = 0; i < tile_boundary.size() - 1; ++i) {
+    //     std::cout << tile_boundary[i + 1] - tile_boundary[i] << "   ";
+    // }
+    // std::cout << std::endl;
+}
+
+
+void configure_tile(
+    int npixels, int nthreads, int Ny,
+    VectorXi const &my, VectorXi const &cover_o, VectorXi const &cover_c,
+    std::vector<int> &tile_boundary)
+{
+    // make histogram
+    std::vector<unsigned long> hist(npixels, 0ul);
+    for (size_t k = 0; k < my.size(); ++k) {
+        int const myk = my(k);
+        if (cover_o(k)) {
+            int const col_from = myk + MSP + 1 + Ny;
+            int const col_to = col_from + MSP2;
+            for (int i = col_from; i < col_to; ++i) {
+                hist[i] += 1;
+            }
+        }
+        if (cover_c(k)) {
+            int const col_from = - myk + MSP + Ny;
+            int const col_to = col_from + MSP2;
+            for (int i = col_from; i < col_to; ++i) {
+                hist[i] += 1;
+            }
+        }
+    }
+    unsigned long const hist_total = std::accumulate(hist.begin(), hist.end(), 0ul);
+
+    // number of data per tile
+    unsigned long const ndata = hist_total / nthreads + ((hist_total % nthreads > 0) ? 1 : 0);
+
+    // configure tile
+    tile_boundary.clear();
+    tile_boundary.push_back(0);
+    unsigned long count = 0;
+    for (int i = 0; i < npixels && tile_boundary.size() < nthreads; ++i) {
+        if (count > ndata) {
+            tile_boundary.push_back(i);
+            count = 0;
+        }
+        count += hist[i];
+    }
+    tile_boundary.push_back(npixels);
+
+    // std::cout << "hist: total " << hist_total << " ndata " << ndata << std::endl;
+    // char delim2 = '[';
+    // for (auto i = hist.begin(); i != hist.end(); ++i) {
+    //     std::cout << delim2 << " " << *i;
+    //     delim2 = ',';
+    // }
+    // std::cout << " ]" << std::endl;
+
+    // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
+    // std::cout << "tile_boundary: " << tile_boundary.size() << " boundaries" << std::endl;
     // char delim = '[';
     // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
     //     std::cout << delim << " " << *i;
@@ -673,7 +739,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
   #ifdef _OPENMP
     cout << "(OPENMP): Running in multi-thread with " <<
     omp_get_max_threads() << " threads." << endl << endl;
-    configure_tile(mbuf_l.cols(), omp_get_max_threads(), tile_boundary);
+    // configure_tile(mbuf_l.cols(), omp_get_max_threads(), tile_boundary);
   #endif
 
   cout << "Preparation for FFT.";
@@ -681,6 +747,10 @@ int mfista_L1_TSV_core_nufft(double *xout,
   // prepare for nufft
 
   preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+
+  #ifdef _OPENMP
+    configure_tile(mbuf_l.cols(), omp_get_max_threads(), Ny, my, cover_o, cover_c, tile_boundary);
+  #endif
 
   // for fftw
 
