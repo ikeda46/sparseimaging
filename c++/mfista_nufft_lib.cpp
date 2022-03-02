@@ -613,7 +613,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
   void (*soft_th_box)(VectorXd &newvec, VectorXd &vector, double eta, int box_flag, VectorXd &box);
 
   int NN = Nx*Ny, i, iter;
-  double Qcore, Fval, Qval, c, tmpa, tmpb, l1cost, tsvcost, costtmp,
+  double Qcore, Fval, Qval, c, eta, tmpa, tmpb, l1cost, tsvcost, costtmp,
     mu=1, munew, *rvecf;
   fftw_complex *cvecf;
   fftw_plan fftwplan_c2r, fftwplan_r2c;
@@ -740,6 +740,8 @@ int mfista_L1_TSV_core_nufft(double *xout,
     costtmp += lambda_tsv*tsvcost;
   }
 
+  eta = 10;
+  
   for(iter = 0; iter < maxiter; iter++){
 
     cost(iter) = costtmp;
@@ -780,10 +782,12 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
       if(Fval<=Qval) break;
 
-      c *= ETA;
+      c *= eta;
     }
 
-    c /= ETA;
+    eta = ETA;
+    
+    c /= eta;
 
     munew = (1+sqrt(1+4*mu*mu))/2;
 
