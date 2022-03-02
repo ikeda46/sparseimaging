@@ -1,5 +1,5 @@
-function ddx = d2_sqTV(Nx,Ny)
-% function ddx = d2_sqTV(Nx,Ny);
+function [dTSV2_ddx] = d2_TSV(Nx,Ny)
+% function [d2TSV] = d2_TSV(Nx,Ny);
 
 tmp = 8*ones(Nx,Ny);
 
@@ -13,6 +13,6 @@ tmp(2:Nx-1,Ny) = tmp(2:Nx-1,Ny) - 2;
 tmp(1, 2:Ny-1) = tmp(1, 2:Ny-1) - 2;
 tmp(Nx,2:Ny-1) = tmp(Nx,2:Ny-1) - 2;
 
-ddx = reshape(tmp,Nx*Ny,1);
+dTSV2_ddx = reshape(tmp,Nx*Ny,1);
 
 end

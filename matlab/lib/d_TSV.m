@@ -1,5 +1,5 @@
-function [dvec] = d_sqTV(x,Nx,Ny)
-% [sqTVcost] = d_sqTV(x,Nx,Ny);
+function [dvec] = d_TSV(x,Nx,Ny)
+% [dTSV] = d_TSV(x,Nx,Ny);
 %   Computing squared total variation.
 
 tmp = reshape(x,Nx,Ny);

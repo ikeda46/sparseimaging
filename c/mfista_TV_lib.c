@@ -27,6 +27,24 @@
 
 /* subroutines for mfista_tv */
 
+double TV(int NX, int NY, double *xvec)
+{
+  int i, j;
+  double tv = 0;
+
+  for(i = 0; i < NX-1; ++i) for(j = 0; j < NY-1; ++j)
+      tv += sqrt(pow((xvec[NX*j+i]-xvec[NX*j+i+1]),2.0)
+		 +pow((xvec[NX*j+i]-xvec[NX*(j+1)+i]),2.0));
+
+  for(i = 0; i < NX-1; ++i)
+    tv += fabs(xvec[NX*(NY-1)+i]- xvec[NX*(NY-1)+i+1]);
+
+  for(j = 0; j < NY-1; ++j)
+    tv += fabs(xvec[NX*j+NX-1]  - xvec[NX*(j+1)+NX-1]);
+
+  return(tv);
+}
+
 void Lx(int NX, int NY, double *xvec, double *p, double *q)
 {
   int i, j;
@@ -63,6 +81,17 @@ void P_positive(int N, double *vec)
   for(i = 0; i< N; ++i) if(vec[i]<0) vec[i] = 0;
 }
 
+void P_positive_box(int N, double *vec, int box_flag, float *cl_box)
+{
+  int i;
+
+  if(box_flag == 0)
+    P_positive(N, vec);
+  else{
+    for(i = 0; i< N; ++i) if(cl_box[i] == 0 || vec[i] < 0) vec[i] = 0;
+  }
+}
+
 void P_pqiso(int NX, int NY,
 	     double *pmat, double *qmat,
 	     double *rmat, double *smat)
@@ -93,8 +122,7 @@ void P_pqiso(int NX, int NY,
 }
 
 void FGP_L1(int *N, int NX, int NY,
-	    double *bvec, double lambda_l1, double lambda_tv,
-	    int ITER,
+	    double *bvec, double lambda_l1, double lambda_tv, int ITER,
 	    double *pmat, double *qmat, double *rmat, double *smat, 
 	    double *npmat, double *nqmat, double *xvec)
 {
@@ -155,6 +183,72 @@ void FGP_L1(int *N, int NX, int NY,
   dscal_(N, &alpha1, xvec, &inc);
   daxpy_(N, &alpha2, bvec, &inc, xvec, &inc);
   soft_threshold(xvec, *N, lambda_l1, xvec);
+
+}
+
+void FGP_L1_box(int *N, int NX, int NY,
+		double *bvec, double lambda_l1, double lambda_tv, int ITER,
+		double *pmat, double *qmat, double *rmat, double *smat, 
+		double *npmat, double *nqmat, double *xvec,
+		int box_flag, float *cl_box)
+{
+  int i, iter, inc = 1, Ntmpp = (NX-1)*NY, Ntmpq = NX*(NY-1);
+  double t = 1, tnew,
+    alpha1 = -lambda_tv, alpha2 = 1, alpha3 = 1/(8*lambda_tv), beta;
+
+  /* initialization */
+  for(i = 0; i< Ntmpp; ++i) pmat[i]=0;
+  for(i = 0; i< Ntmpq; ++i) qmat[i]=0;
+
+  dcopy_(&Ntmpp, pmat, &inc, rmat, &inc);
+  dcopy_(&Ntmpq, qmat, &inc, smat, &inc);
+
+  /* iteration */
+
+  for(iter = 0; iter < ITER; ++iter){
+
+    tnew = (1+sqrt(1+4*t*t))/2;
+
+    /* P_positive(b-lambda_tv*L_pq(r,s)) */
+   
+    Lpq(NX, NY, rmat, smat, xvec);
+    dscal_(N, &alpha1, xvec, &inc);
+    daxpy_(N, &alpha2, bvec, &inc, xvec, &inc);
+    soft_threshold_box(xvec, *N, lambda_l1, xvec, box_flag, cl_box);
+    
+    /*  [tmpr,tmps] = Lx(tmp,N); */
+    Lx(NX, NY, xvec, npmat, nqmat);
+
+    /*[pnew,qnew] = P_pqiso((r+tmpr/(8*lambda)),(s+tmps/(8*lambda)),N);*/
+
+    daxpy_(&Ntmpp, &alpha3, npmat, &inc, rmat, &inc);
+    daxpy_(&Ntmpq, &alpha3, nqmat, &inc, smat, &inc);
+
+    P_pqiso(NX, NY, rmat, smat, npmat, nqmat);
+
+    dcopy_(&Ntmpp, npmat, &inc, rmat, &inc);
+    dcopy_(&Ntmpq, nqmat, &inc, smat, &inc);
+
+    beta = 1+(t-1)/tnew;
+    dscal_(&Ntmpp, &beta, rmat, &inc);
+    dscal_(&Ntmpq, &beta, smat, &inc);
+
+    beta = -(t-1)/tnew;
+    daxpy_(&Ntmpp, &beta, pmat, &inc, rmat, &inc);
+    daxpy_(&Ntmpq, &beta, qmat, &inc, smat, &inc);
+
+    /* update */
+    t = tnew;
+    dcopy_(&Ntmpp, npmat, &inc, pmat, &inc);
+    dcopy_(&Ntmpq, nqmat, &inc, qmat, &inc);
+  }
+
+  /* P_positive(b-lambda_tv*L_pq(p,q)) */
+
+  Lpq(NX, NY, pmat, qmat, xvec);
+  dscal_(N, &alpha1, xvec, &inc);
+  daxpy_(N, &alpha2, bvec, &inc, xvec, &inc);
+  soft_threshold_box(xvec, *N, lambda_l1, xvec, box_flag, cl_box);
 
 }
 
@@ -223,182 +317,68 @@ void FGP_nonneg(int *N, int NX, int NY,
 
 }
 
-/* mfista for TV */
-
-int mfista_L1_TV_core(double *yvec, double *Amat, 
-		      int *M, int *N, int NX, int NY,
-		      double lambda_l1, double lambda_tv, double cinit,
-		      double *xvec, int nonneg_flag)
+void FGP_nonneg_box(int *N, int NX, int NY,
+		    double *bvec, double lambda_tv, int ITER,
+		    double *pmat, double *qmat, double *rmat, double *smat, 
+		    double *npmat, double *nqmat, double *xvec,
+		    int box_flag, float *cl_box)
 {
-  double *ytmp, *zvec, *xtmp, *xnew, *yAz, *dfdx,
-    *rmat, *smat, *npmat, *nqmat,
-    Qcore, Fval, Qval, c, costtmp, *cost, *pmat, *qmat, *ones,
-    mu=1, munew, alpha = 1, gamma=0, tmpa, l1cost, tvcost;
-  int i, iter, inc = 1;
+  int i, iter, inc = 1, Ntmpp = (NX-1)*NY, Ntmpq = NX*(NY-1);
+  double t = 1, tnew,
+    alpha1 = -lambda_tv, alpha2 = 1, alpha3 = 1/(8*lambda_tv), beta;
 
-  printf("computing image with MFISTA.\n");
+  /* initialization */
+  for(i = 0; i< Ntmpp; ++i) pmat[i]=0;
+  for(i = 0; i< Ntmpq; ++i) qmat[i]=0;
 
-  /* allocate memory space start */ 
+  dcopy_(&Ntmpp, pmat, &inc, rmat, &inc);
+  dcopy_(&Ntmpq, qmat, &inc, smat, &inc);
 
-  zvec  = alloc_vector(*N);
-  xnew  = alloc_vector(*N);
-  dfdx  = alloc_vector(*N);
-  yAz   = alloc_vector(*M);
-  ytmp  = alloc_vector(*M);
-  xtmp  = alloc_vector(*N);
-  ones  = alloc_vector(*N);
+  /* iteration */
 
-  if( nonneg_flag == 1){
-    for(i = 0; i < (*N); ++i) ones[i]=1;
+  for(iter = 0; iter < ITER; ++iter){
+
+    tnew = (1+sqrt(1+4*t*t))/2;
+
+    /* P_positive(b-lambda_tv*L_pq(r,s)) */
+   
+    Lpq(NX, NY, rmat, smat, xvec);
+    dscal_(N, &alpha1, xvec, &inc);
+    daxpy_(N, &alpha2, bvec, &inc, xvec, &inc);
+    P_positive_box(*N, xvec, box_flag, cl_box);
+
+    /*  [tmpr,tmps] = Lx(tmp,N); */
+    Lx(NX, NY, xvec, npmat, nqmat);
+
+    /*[pnew,qnew] = P_pqiso((r+tmpr/(8*lambda)),(s+tmps/(8*lambda)),N);*/
+
+    daxpy_(&Ntmpp, &alpha3, npmat, &inc, rmat, &inc);
+    daxpy_(&Ntmpq, &alpha3, nqmat, &inc, smat, &inc);
+
+    P_pqiso(NX, NY, rmat, smat, npmat, nqmat);
+
+    dcopy_(&Ntmpp, npmat, &inc, rmat, &inc);
+    dcopy_(&Ntmpq, nqmat, &inc, smat, &inc);
+
+    beta = 1+(t-1)/tnew;
+    dscal_(&Ntmpp, &beta, rmat, &inc);
+    dscal_(&Ntmpq, &beta, smat, &inc);
+
+    beta = -(t-1)/tnew;
+    daxpy_(&Ntmpp, &beta, pmat, &inc, rmat, &inc);
+    daxpy_(&Ntmpq, &beta, qmat, &inc, smat, &inc);
+
+    /* update */
+    t = tnew;
+    dcopy_(&Ntmpp, npmat, &inc, pmat, &inc);
+    dcopy_(&Ntmpq, nqmat, &inc, qmat, &inc);
   }
 
-  pmat = alloc_matrix(NX-1,NY);
-  qmat = alloc_matrix(NX,NY-1);
+  /* P_positive(b-lambda_tv*L_pq(p,q)) */
 
-  npmat = alloc_matrix(NX-1,NY);
-  nqmat = alloc_matrix(NX,NY-1);
+  Lpq(NX, NY, pmat, qmat, xvec);
+  dscal_(N, &alpha1, xvec, &inc);
+  daxpy_(N, &alpha2, bvec, &inc, xvec, &inc);
+  P_positive_box(*N, xvec, box_flag, cl_box);
 
-  rmat = alloc_matrix(NX-1,NY);
-  smat = alloc_matrix(NX,NY-1);
-
-  cost  = alloc_vector(MAXITER);
-
-  /* initialize xvec */
-  dcopy_(N, xvec, &inc, zvec, &inc);
-
-  c = cinit;
-
-  costtmp = calc_F_part(M, N, yvec, Amat, xvec, ytmp);
-
-  l1cost = dasum_(N, xvec, &inc);
-  costtmp += lambda_l1*l1cost;
-    
-  tvcost = TV(NX, NY, xvec);
-  costtmp += lambda_tv*tvcost;
-
-  for(iter = 0; iter < MAXITER; iter++){
-
-    cost[iter] = costtmp;
-
-    if((iter % 100) == 0)
-      printf("%d cost = %f \n",(iter+1), cost[iter]);
-
-    calc_yAz(M, N,  yvec, Amat, zvec, yAz);
-    dgemv_("T", M, N, &alpha, Amat, M, yAz, &inc, &gamma, dfdx, &inc);
-
-    Qcore =  ddot_(M, yAz, &inc, yAz, &inc)/2;
-
-    for( i = 0; i < MAXITER; i++){
-
-      if( nonneg_flag == 1){
-	dcopy_(N, ones, &inc, xtmp, &inc);
-	tmpa = -lambda_l1/c;
-	dscal_(N, &tmpa, xtmp, &inc);
-	tmpa = 1/c;
-	daxpy_(N, &tmpa, dfdx, &inc, xtmp, &inc);
-	daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
-
-	FGP_nonneg(N, NX, NY, xtmp, lambda_tv/c, FGPITER,
-		   pmat, qmat, rmat, smat, npmat, nqmat, xnew);
-      }
-      else{
-	dcopy_(N, dfdx, &inc, xtmp, &inc);
-	tmpa = 1/c;
-	dscal_(N, &tmpa, xtmp, &inc);
-	daxpy_(N, &alpha, zvec, &inc, xtmp, &inc);
-
-	FGP_L1(N, NX, NY, xtmp, lambda_l1/c, lambda_tv/c, FGPITER,
-	       pmat, qmat, rmat, smat, npmat, nqmat, xnew);
-      }
-
-      Fval = calc_F_part(M, N, yvec, Amat, xnew, ytmp);
-      Qval = calc_Q_part(N, xnew, zvec, c, dfdx, xtmp);
-      Qval += Qcore;
-      
-      if(Fval<=Qval) break;
-
-      c *= ETA;
-    }
-
-    c /= ETA;
-
-    munew = (1+sqrt(1+4*mu*mu))/2;
-
-    l1cost = dasum_(N, xnew, &inc);
-    Fval += lambda_l1*l1cost;
-
-    tvcost = TV(NX, NY, xnew);
-    Fval += lambda_tv*tvcost;
-
-    if(Fval < cost[iter]){
-
-      costtmp = Fval;
-      dcopy_(N, xvec, &inc, zvec, &inc);
-
-      tmpa = (1-mu)/munew;
-      dscal_(N, &tmpa, zvec, &inc);
-
-      tmpa = 1+((mu-1)/munew);
-      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
-	
-      dcopy_(N, xnew, &inc, xvec, &inc);
-	    
-    }	
-    else{
-      dcopy_(N, xvec, &inc, zvec, &inc);
-
-      tmpa = 1-(mu/munew);
-      dscal_(N, &tmpa, zvec, &inc);
-      
-      tmpa = mu/munew;
-      daxpy_(N, &tmpa, xnew, &inc, zvec, &inc);
-
-      /* another stopping rule */
-      if((iter>1) && (dasum_(N, xvec, &inc) == 0)){
-	printf("x becomes a 0 vector.\n");
-	break;
-      }
-
-    }
-
-    /* stopping rule start */
-     
-    if((iter>=MINITER) && ((cost[iter-TD]-cost[iter])<EPS)) break;
-
-    /* stopping rule end */
-
-    mu = munew;
-  }
-  if(iter == MAXITER){
-    printf("%d cost = %f \n",(iter), cost[iter-1]);
-    iter = iter -1;
-  }
-  else
-    printf("%d cost = %f \n",(iter+1), cost[iter]);
-
-  printf("\n");
-
-  /* clear memory */
-
-  free(ytmp);
-
-  free(xtmp);
-
-  free(zvec);
-  free(xnew);
-
-  free(dfdx);
-  free(yAz);
-
-  free(ones);
-  free(pmat);
-  free(qmat);
-  free(npmat);
-  free(nqmat);
-
-  free(rmat);
-  free(smat);
-  free(cost);
-
-  return(iter+1);
 }

@@ -27,8 +27,8 @@
 
 void usage(char *s)
 {
-  printf("%s <fft_data fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-nonneg} {-cl_box box_fname} {-fftw_measure} {-log log_fname}\n\n",s);
-  printf("  <fft_data fname>: file name of fft_file.\n");
+  printf("%s <nufft_data fname> <double lambda_l1> <double lambda_tv> <double lambda_tsv> <double c> <X outfile> {X initfile} {-nonneg} {-cl_box box_fname} {-maxiter N} {-eps epsilon} {-log log_fname}\n\n",s);
+  printf("  <nufft_data fname>: file name of nufft_file.\n");
   printf("  <double lambda_l1>: value of lambda_l1. Positive.\n");
   printf("  <double lambda_tv>: value of lambda_tv. Positive.\n");
   printf("  <double lambda_tsv>: value of lambda_tsv. Positive.\n");
@@ -42,7 +42,6 @@ void usage(char *s)
   printf("  {-maxiter N}: maximum number of iteration.\n");
   printf("  {-eps epsilon}: epsilon used to check the convergence.\n");
   printf("  {-cl_box box_fname}: file name of CLEAN box data (float).\n");
-  printf("  {-fftw_measure}: Let fftw make plan with FFTW_MEASURE.\n");
   printf("  {-log log_fname}: Specify log file.\n\n");
 
   printf(" This program solves the following problem with FFT\n\n");
@@ -65,20 +64,19 @@ void usage(char *s)
 
 int main(int argc, char *argv[]){
 
-  unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
- 
-  int M, NN, NX, NY, dnum, i, *u_idx, *v_idx,
-    init_flag = 0, box_flag = 0, log_flag = 0, nonneg_flag = 0, maxiter = MAXITER;
+  int M, NN, NX, NY, dnum, i, 
+    init_flag = 0, box_flag = 0, log_flag = 0, nonneg_flag = 0,
+    maxiter = MAXITER;
 
-  char init_fname[1024], box_fname[1024], fftw_fname[1024], log_fname[1024];
-  double *y_r, *y_i, *noise_stdev, *xinit, *xvec, 
-    cinit, lambda_l1, lambda_tv, lambda_tsv, eps = EPS;
+  char init_fname[1024], box_fname[1024], nufftw_fname[1024], log_fname[1024];
+  double *u_dx, *v_dy, *vis_r, *vis_i, *vis_std,
+    *xinit, *xvec, cinit, lambda_l1, lambda_tv, lambda_tsv, eps = EPS;
 
   float *cl_box;
   
   struct IO_FNAMES mfista_io;
   struct RESULT    mfista_result;
-  FILE *fftw_fp, *log_fid;
+  FILE *nufftw_fp, *log_fid;
 
   /* check the number of variables first. */
 
@@ -132,9 +130,6 @@ int main(int argc, char *argv[]){
       ++i;
       strcpy(box_fname,argv[i]);
     }
-    else if(strcmp(argv[i],"-fftw_measure") == 0){
-      fftw_plan_flag = FFTW_MEASURE;
-    }
     else{
       init_flag = 1;
       strcpy(init_fname,argv[i]);
@@ -143,36 +138,36 @@ int main(int argc, char *argv[]){
 
   /* read fftw_data */
 
-  strcpy(fftw_fname,argv[1]);
+  strcpy(nufftw_fname,argv[1]);
   
-  fftw_fp = fopenr(fftw_fname);
+  nufftw_fp = fopenr(nufftw_fname);
 
-  if (fscanf(fftw_fp, "M  = %d\n", &M)  !=1){exit(0);}
-  if (fscanf(fftw_fp, "NX = %d\n", &NX) !=1){exit(0);}
-  if (fscanf(fftw_fp, "NY = %d\n", &NY) !=1){exit(0);}
-  if (fscanf(fftw_fp, "\n") !=0)            {exit(0);}
-  if (fscanf(fftw_fp, "u, v, y_r, y_i, noise_std_dev\n") !=0) {exit(0);}
-  if (fscanf(fftw_fp, "\n") !=0)            {exit(0);}
+  if (fscanf(nufftw_fp, "M  = %d\n", &M)  !=1){exit(0);}
+  if (fscanf(nufftw_fp, "NX = %d\n", &NX)  !=1){exit(0);}
+  if (fscanf(nufftw_fp, "NY = %d\n", &NY)  !=1){exit(0);}
+  if (fscanf(nufftw_fp, "\n") !=0)            {exit(0);}
+  if (fscanf(nufftw_fp, "u_rad, v_rad, vis_r, vis_i, noise_std_dev\n") !=0) {exit(0);}
+  if (fscanf(nufftw_fp, "\n") !=0)            {exit(0);}
 
   printf("number of u-v points:  %d\n",M);
   printf("X-dim of image:        %d\n",NX);
   printf("Y-dim of image:        %d\n",NY);
-  u_idx = alloc_int_vector(M);
-  v_idx = alloc_int_vector(M);
 
-  y_r    = alloc_vector(M);
-  y_i    = alloc_vector(M);
-  noise_stdev = alloc_vector(M);
+  u_dx = alloc_vector(M);
+  v_dy = alloc_vector(M);
+  vis_r    = alloc_vector(M);
+  vis_i    = alloc_vector(M);
+  vis_std  = alloc_vector(M);
   
   for(i = 0;i<M;++i){
-    if(fscanf(fftw_fp, "%d, %d, %lf, %lf, %lf\n",
-	      u_idx+i,v_idx+i,y_r+i,y_i+i,noise_stdev+i)!=5){
+    if(fscanf(nufftw_fp, "%le, %le, %le, %le, %le\n",
+	      u_dx+i,v_dy+i,vis_r+i,vis_i+i,vis_std+i)!=5){
       printf("cannot read data.\n");
       exit(0);
     }
   }
 
-  fclose(fftw_fp);
+  fclose(nufftw_fp);
 
   /* initialize xvec */
 
@@ -204,11 +199,9 @@ int main(int argc, char *argv[]){
       printf("Number of read data is shorter than expected.\n");
   }
 
-  mfista_imaging_core_fft(u_idx, v_idx, y_r, y_i, noise_stdev,
-			  M, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv, cinit,
-			  xinit, xvec, nonneg_flag, fftw_plan_flag,
-			  box_flag, cl_box,
-			  &mfista_result);
+  mfista_imaging_core_nufft(u_dx, v_dy, vis_r, vis_i, vis_std,
+			    M, NX, NY, maxiter, eps, lambda_l1, lambda_tv, lambda_tsv, cinit,
+			    xinit, xvec, nonneg_flag, box_flag, cl_box, &mfista_result);
 
   write_X_vector(argv[6], NN, xvec);
 
@@ -235,12 +228,12 @@ int main(int argc, char *argv[]){
 
   /* clear memory */
 
-  free(u_idx);
-  free(v_idx);
-  free(y_r);
-  free(y_i);
+  free(u_dx);
+  free(v_dy);
+  free(vis_r);
+  free(vis_i);
 
-  free(noise_stdev);
+  free(vis_std);
   free(xinit);
   free(xvec);
   free(cl_box);

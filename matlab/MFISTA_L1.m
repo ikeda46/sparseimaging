@@ -1,10 +1,11 @@
-function [x,cost,LOOE] = MFISTA_L1(y,A,xinit,lambda,cinit)
+function [x,cost,LOOE] = MFISTA_L1(y,A,xinit,lambda,nonneg_flag,cinit)
 % function [x,cost,LOOE] = MFISTA_L1(y,A,xint,lambda,c);
 %
 %    y: observed vector
 %    A: matrix
 %    xinit: initial vector for x
 %    lambda: lambda for L1
+%    nonneg_flag: if nonneg_flag = 1, x is restricted to be nonnegative.
 %    c: initial value for the estimate of Lipshitz constant of A'*A
 % 
 %   This algorithm solves 
@@ -42,12 +43,16 @@ for t = 1:MAXITER
     AyAz = A'*yAz;
     Qcore = yAz'*yAz/2;
     
-    for i = 1:MAXITER     
-        xtmp = softth(AyAz/c+z,lambda/c);
+    for i = 1:MAXITER
+        if nonneg_flag == 1
+            xtmp = softth_nonneg(AyAz/c+z,lambda/c);
+        else
+            xtmp = softth(AyAz/c+z,lambda/c);
+        end
         yax = y-A*xtmp;
         tmpF = yax'*yax/2;
         tmpQ = Qcore-(xtmp-z)'*AyAz+(xtmp-z)'*(xtmp-z)*c/2;
- %       fprintf('c = %g, F = %g, Q = %g\n',c,tmpF,tmpQ);
+
         if (tmpF <= tmpQ) 
             break
         end
@@ -58,7 +63,7 @@ for t = 1:MAXITER
     
     munew = (1+sqrt(1+4*mu^2))/2;
     
-    tmpF = tmpF+lambda*sum(abs(xtmp));
+    tmpF = tmpF + lambda*sum(abs(xtmp));
     
     if tmpF < tmpcost(t)
         tmpc = tmpF;
@@ -88,7 +93,7 @@ show_vlbi_image(x,Nsq,Nsq);
 fprintf('Computing approximate LOOE.\n');
 
 RSS = y-A*x;
-A_s = A(:,x>0);
+A_s = A(:,abs(x)>0);
 Chi = A_s'*A_s;
 
 LOOE = compute_LOOE(RSS,Chi,A_s);

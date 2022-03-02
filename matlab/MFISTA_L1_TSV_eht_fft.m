@@ -1,5 +1,5 @@
-function [x,cost,LOOE] = MFISTA_L1_TSV_nonneg_eht_fft(y_r,y_i,u_idx,v_idx,noise_std,c_box,Nx,Ny,xinit,lambda,lambda2,cinit)
-% function [x,cost,LOOE] = MFISTA_L1_TSV_nonneg_eht_fft(y,u_idx,v_idx,th_noise,c_box,Nx,Ny,xinit,lambda,lambda2,cinit);
+function [x,cost,error,outy] = MFISTA_L1_TSV_eht_fft(y_r,y_i,u_idx,v_idx,noise_std,c_box,Nx,Ny,xinit,lambda,lambda2,nonneg_flag,cinit)
+% function [x,cost,error,outy] = MFISTA_L1_TSV_eht_fft(y_r,y_i,u_idx,v_idx,th_noise,c_box,Nx,Ny,xinit,lambda,lambda2,nonneg_flag,cinit);
 %
 %    y: observed vector
 %    u_idx:
@@ -11,11 +11,12 @@ function [x,cost,LOOE] = MFISTA_L1_TSV_nonneg_eht_fft(y_r,y_i,u_idx,v_idx,noise_
 %    xinit: initial vector for x
 %    lambda: lambda for L1
 %    lambda2: lambda for sqTV cost
+%    nonneg_flag: if nonneg_flag = 1, x is restricted to be nonnegative.
 %    c: initial value for the estimate of Lipshitz constant of A'*A
 % 
 %   This algorithm solves 
 %
-%    min_x (1/2)||y-A*x||_2^2 + lambda*sum(x) + lambda2*sqTV(x)
+%    min_x (1/2)||y-A*x||_2^2 + lambda*sum(abs(x)) + lambda2*TSV(x)
 %    
 %    x is an image with Nx*Ny. x is nonnegative.
 
@@ -44,8 +45,8 @@ M = length(u_idx);
 y_fft = mk_fftmat(u_idx,v_idx,(y_r./noise_std),(y_i./noise_std),Nx,Ny)*sqNN;
 mask  = mk_fftmat(u_idx,v_idx,std_inv,zeros(1,M),Nx,Ny);
 
-tmpc = lambda*sum(x)+...
-    costF_fft_sqTV((y_fft-(mask.*fft2(reshape(x,Nx,Ny),Nx,Ny))),x,Nx,Ny,lambda2);
+tmpc = lambda*sum(abs(x))+...
+    costF_fft_TSV((y_fft-(mask.*fft2(reshape(x,Nx,Ny),Nx,Ny))),x,Nx,Ny,lambda2);
 
 for t = 1:MAXITER
 
@@ -54,23 +55,27 @@ for t = 1:MAXITER
     yAz = y_fft-(mask.*fft2(reshape(z,Nx,Ny),Nx,Ny));
     
     if mod(t,100) == 1
-        fprintf('%d cost = %f\n',t,tmpcost(t));
+        fprintf('%d cost = %g\n',t,tmpcost(t));
     end
     
     AyAz = reshape(real(ifft2((mask.*reshape(yAz,Nx,Ny)),Nx,Ny)),Nx*Ny,1)/2;
     
-    dvec = d_sqTV(z,Nx,Ny);
+    dvec = d_TSV(z,Nx,Ny);
     
     AyAz_dvec = AyAz-lambda2*dvec;
     
-    Qcore = costF_fft_sqTV(yAz,z,Nx,Ny,lambda2);
+    Qcore = costF_fft_TSV(yAz,z,Nx,Ny,lambda2);
  
-    for i = 1:MAXITER     
-        xtmp = softth_nonneg((AyAz_dvec)/c+z,lambda/c).*c_box;
+    for i = 1:MAXITER
+        if nonneg_flag == 1
+            xtmp = softth_nonneg((AyAz_dvec)/c+z,lambda/c).*c_box;
+        else
+            xtmp = softth((AyAz_dvec)/c+z,lambda/c).*c_box;
+        end
 
         yax  = y_fft-(mask.*fft2(reshape(xtmp,Nx,Ny),Nx,Ny));
         
-        tmpF = costF_fft_sqTV(yax,xtmp,Nx,Ny,lambda2);
+        tmpF = costF_fft_TSV(yax,xtmp,Nx,Ny,lambda2);
         tmpQ = Qcore-(xtmp-z)'*AyAz_dvec+(xtmp-z)'*(xtmp-z)*c/2;
         
         if (tmpF <= tmpQ) 
@@ -79,13 +84,11 @@ for t = 1:MAXITER
         c = c*eta;
     end
     
- %   fprintf('hi2\n');
-    
     c = c/eta;
     
     munew = (1+sqrt(1+4*mu^2))/2;
     
-    tmpF = tmpF + lambda*sum(xtmp);
+    tmpF = tmpF + lambda*sum(abs(xtmp));
     
     if tmpF < tmpcost(t)
         tmpc = tmpF;
@@ -114,18 +117,12 @@ drawnow
 
 %% compute CV
 
-% fprintf('Computing approximate LOOE.\n');
-% 
-% RSS = y-A*x;
-% A_s = A(:,x>0);
-% 
-% tmpdiag = d2_sqTV(Nx,Ny);
-% G_s = diag(tmpdiag(x>0));
-% 
-% Chi = A_s'*A_s + lambda2*G_s;
-% 
-% LOOE = compute_LOOE(RSS,Chi,A_s);
+outy = fft2(reshape(x,Nx,Ny),Nx,Ny);
 
-LOOE = 0;
+yAz = y_fft-(mask.*outy);
+
+error.chisq = costF_fft_TSV(yAz,z,Nx,Ny,0);
+error.l1    = sum(abs(x));
+error.TSV   = TSV(x,Nx,Ny);
 
 end
