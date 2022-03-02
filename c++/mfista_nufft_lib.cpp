@@ -181,7 +181,7 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
   VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
-  MatrixXcd &mbuf_l)
+  MatrixXcd &mbuf_l, std::vector<int> const &tile_boundary)
 {
   int Mh, threadnum;
 //  complex<double> v0, vy, tmpc;
@@ -195,32 +195,101 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   if(NU_SIGN == -1) map_nufft  = map_c;
   else              map_nufft  = map_0;
 
-  // openmp
-  #ifdef _OPENMP
+  if (!tile_boundary.empty()) {
+    // openmp should be available
+    int const ntile = tile_boundary.size() - 1;
+    #pragma omp parallel for schedule(dynamic)
+    for (int itile = 0; itile < ntile; ++itile) {
+      for (int k = 0; k < M; ++k) {
+        int const myk = my(k);
+        if (cover_o(k) == 1) {
+          int const col_from = myk + MSP + 1 + Ny;
+          int const col_to = col_from + MSP2;
+          int const tile_from = tile_boundary[itile];
+          int const tile_to = tile_boundary[itile + 1];
+          if (tile_from < col_to && col_from < tile_to) {
+            int const icol = (tile_from > col_from) ? tile_from : col_from;
+            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
+            complex<double> v0half = 0.5 * E1(k)*(map_nufft(Fin(k)));
+            int const ix = mx(k) + MSP + 1 + Nx;
+            if (ncol == MSP2) {
+              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
+                v0half
+                * E2x.block<MSP2, 1>(0, k)
+                * E2y.block<MSP2, 1>(0, k).transpose();
+            } else {
+              for (int jcol = 0; jcol < ncol; ++jcol) {
+                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                  v0half
+                  * E2x.block<MSP2, 1>(0, k)
+                  * E2y(icol - col_from + jcol, k);
+              }
+            }
+          }
+        }
+        if (cover_c(k) == 1) {
+          int const col_from = - myk + MSP + Ny;
+          int const col_to = col_from + MSP2;
+          int const tile_from = tile_boundary[itile];
+          int const tile_to = tile_boundary[itile + 1];
+          if (tile_from < col_to && col_from < tile_to) {
+            int const icol = (tile_from > col_from) ? tile_from : col_from;
+            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
+            complex<double> v0half = 0.5 * conj(E1(k)*(map_nufft(Fin(k))));
+            int const ix = - mx(k) + MSP + Nx;
+            if (ncol == MSP2) {
+              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
+                v0half
+                * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+                * E2y.block<MSP2, 1>(0, k).colwise().reverse().transpose();
+            } else {
+              int const offset = max(0, tile_from - col_from);
+              for (int jcol = 0; jcol < ncol; ++jcol) {
+                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+                  v0half
+                  * E2x.block<MSP2, 1>(0, k).colwise().reverse()
+                  * E2y(MSP2 - 1 - offset - jcol, k);
+              }
+            }
+          }
+        }
+      }
+    }
+  } else {
+    // openmp
+    #ifdef _OPENMP
 
-    threadnum = omp_get_max_threads();
-    if(threadnum > REDUCTIONNUM) threadnum = REDUCTIONNUM;
+      threadnum = omp_get_max_threads();
+      if(threadnum > REDUCTIONNUM) threadnum = REDUCTIONNUM;
 
-    #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
-    #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
-  #endif
-  for(int k = 0; k < M; ++k){
-    complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
+      #pragma omp declare reduction(+:Eigen::MatrixXcd:omp_out+=omp_in) initializer(omp_priv = omp_orig)
+      #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
+    #endif
+    for(int k = 0; k < M; ++k){
+      complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
-    if(cover_o(k)==1)
-      mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
-        0.5*v0
-        *E2x.block<MSP2,1>(0,k)
-        *E2y.block<MSP2,1>(0,k).transpose();
+      if(cover_o(k)==1)
+        mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
+          0.5*v0
+          *E2x.block<MSP2,1>(0,k)
+          *E2y.block<MSP2,1>(0,k).transpose();
 
-    if(cover_c(k)==1)
-      mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
-        0.5*(conj(v0))
-        *E2x.block<MSP2,1>(0,k).colwise().reverse()
-        *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+      if(cover_c(k)==1)
+        mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
+          0.5*(conj(v0))
+          *E2x.block<MSP2,1>(0,k).colwise().reverse()
+          *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+    }
   }
 
+  #ifdef _OPENMP
+  #pragma omp parallel for
+  for (int i = 0; i < mbuf_l.rows(); ++i) {
+      mbuf_l(i, MSP2 + 2 * Ny) = mbuf_l(i, MSP2);
+  }
+  #else
   mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
+  #endif
 
   //openmp
   #ifdef _OPENMP
@@ -341,7 +410,7 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
   #ifdef _OPENMP
   double sqnorm = 0;
   #pragma omp parallel for reduction(+:sqnorm)
-  for (size_t i = 0; i < vis.size(); ++i) {
+  for (int i = 0; i < vis.size(); ++i) {
       auto const tmp = (vis[i] - yAx[i]) * weight[i];
       yAx[i] = tmp;
       sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag()) / 2;
@@ -359,12 +428,13 @@ void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
 		 VectorXd &E4,
 		 VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
 		 VectorXcd &in_c, VectorXd &out_r, fftw_plan *fftwplan_c2r,
-		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l)
+		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l,
+         std::vector<int> const &tile_boundary)
 {
   yAx.array() *= weight.array();
 
   NUFFT2d1(M, Nx, Ny, dFdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l);
+	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l, tile_boundary);
 }
 
 /* TSV */
@@ -400,10 +470,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = u_dx[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           u_dx[i] = tmp[index_array[i]];
       }
     }
@@ -413,10 +483,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = v_dy[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           v_dy[i] = tmp[index_array[i]];
       }
     }
@@ -426,10 +496,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_r[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_r[i] = tmp[index_array[i]];
       }
     }
@@ -439,10 +509,10 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_i[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_i[i] = tmp[index_array[i]];
       }
     }
@@ -452,15 +522,85 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
     #endif
     {
       std::vector<double> tmp(M);
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           tmp[i] = vis_std[i];
       }
-      for (size_t i = 0; i < M; ++i) {
+      for (int i = 0; i < M; ++i) {
           vis_std[i] = tmp[index_array[i]];
       }
     }
   }
 }
+
+
+void configure_tile(
+    int npixels, int nthreads, int Ny,
+    VectorXi const &my, VectorXi const &cover_o, VectorXi const &cover_c,
+    std::vector<int> &tile_boundary)
+{
+    assert(nthreads > 0);
+    assert(npixels > 0);
+
+    // make histogram
+    std::vector<unsigned long> hist(npixels, 0ul);
+    for (int k = 0; k < my.size(); ++k) {
+        int const myk = my(k);
+        if (cover_o(k)) {
+            int const col_from = myk + MSP + 1 + Ny;
+            int const col_to = col_from + MSP2;
+            for (int i = col_from; i < col_to; ++i) {
+                hist[i] += 1;
+            }
+        }
+        if (cover_c(k)) {
+            int const col_from = - myk + MSP + Ny;
+            int const col_to = col_from + MSP2;
+            for (int i = col_from; i < col_to; ++i) {
+                hist[i] += 1;
+            }
+        }
+    }
+    unsigned long const hist_total = std::accumulate(hist.begin(), hist.end(), 0ul);
+
+    // number of data per tile
+    unsigned long const ndata = hist_total / nthreads + ((hist_total % nthreads > 0) ? 1 : 0);
+
+    // configure tile
+    tile_boundary.clear();
+    tile_boundary.push_back(0);
+    unsigned long count = 0;
+    for (int i = 0; i < npixels && tile_boundary.size() < (size_t)nthreads; ++i) {
+        if (count > ndata) {
+            tile_boundary.push_back(i);
+            count = 0;
+        }
+        count += hist[i];
+    }
+    tile_boundary.push_back(npixels);
+
+    // std::cout << "hist: total " << hist_total << " ndata " << ndata << std::endl;
+    // char delim2 = '[';
+    // for (auto i = hist.begin(); i != hist.end(); ++i) {
+    //     std::cout << delim2 << " " << *i;
+    //     delim2 = ',';
+    // }
+    // std::cout << " ]" << std::endl;
+
+    // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
+    // std::cout << "tile_boundary: " << tile_boundary.size() << " boundaries" << std::endl;
+    // char delim = '[';
+    // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
+    //     std::cout << delim << " " << *i;
+    //     delim = ',';
+    // }
+    // std::cout << " ]" << std::endl;
+    // std::cout << "   ";
+    // for (size_t i = 0; i < tile_boundary.size() - 1; ++i) {
+    //     std::cout << tile_boundary[i + 1] - tile_boundary[i] << "   ";
+    // }
+    // std::cout << std::endl;
+}
+
 
 int mfista_L1_TSV_core_nufft(double *xout,
 			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
@@ -533,6 +673,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
   }
 
   //openmp
+  std::vector<int> tile_boundary;
   #ifdef _OPENMP
     cout << "(OPENMP): Running in multi-thread with " <<
     omp_get_max_threads() << " threads." << endl << endl;
@@ -543,6 +684,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
   // prepare for nufft
 
   preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+
+  #ifdef _OPENMP
+    // adaptive configuration of tiles
+    configure_tile(mbuf_l.cols(), omp_get_max_threads(), Ny, my, cover_o, cover_c, tile_boundary);
+  #endif
 
   // for fftw
 
@@ -607,7 +753,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
       rvec, cvec, &fftwplan_r2c, vis, weight, zvec, mbuf_h);
 
     dF_dx_nufft(M, Nx, Ny, dfdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-      cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l);
+      cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l, tile_boundary);
 
     if( lambda_tsv > 0.0 ){
       tsvcost = TSV(Nx, Ny, zvec, buf_diff);
