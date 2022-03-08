@@ -133,6 +133,12 @@ void mfista_imaging_core_fft(int *u_idx, int *v_idx,
 			     int box_flag, float *cl_box,
 			     struct RESULT *mfista_result);
 
+void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
+              double *xin, double *y_r, double *y_i);
+
+void y2x_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
+              double *yin_r, double *yin_i, double *xout);
+
 #ifdef __cplusplus
 }
 #endif
