@@ -15,13 +15,6 @@ inline fftw_complex *fftw_cast(const std::complex<double> *p)
   return const_cast<fftw_complex*>(reinterpret_cast<const fftw_complex*>(p));
 }
 
-int idx_fftw(int m, int Mr)
-{
-  if(m >= 0 && m < Mr/2) return(m);
-  else if(m >= -Mr/2)    return(m+Mr);
-  else                   return(2*Mr);
-}
-
 void large2small(int Nx, int Ny, VectorXd &out_s, VectorXd &in_l,
   VectorXd &E4)
 {
@@ -87,30 +80,36 @@ void small2large(int Nx, int Ny, VectorXd &out_l, VectorXd &in_s,
   }
 }
 
+double sinc_function(double x)
+{
+  if(x==0.0){return(1.0);}
+  else{return(sin(x)/x);}
+}
+
 void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
-  VectorXd &E4, VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c)
+  VectorXd &E4, VectorXd &uvsinc, VectorXi &mx, VectorXi &my, VectorXi &y_neg)
 {
   double taux, tauy, coeff, Mrx, Mry, tmp3x, tmp3y, pi, tmpcoef[MSP2];
+  int fov_flag = 0;
   VectorXi idx, idx_c;
 
-  cover_o.setZero();
-  cover_c.setZero();
+  y_neg.setZero();
 
   pi = M_PI;
 
   Mrx = (double) 2*Nx;
   Mry = (double) 2*Ny;
 
-  taux = 12/((double)(Nx*Nx));
-  tauy = 12/((double)(Ny*Ny));
+  taux = ((double)MSP)/((double)(Nx*Nx));
+  tauy = ((double)MSP)/((double)(Ny*Ny));
 
   coeff = pi/sqrt(taux*tauy);
 
-  tmp3x = pow((pi/Mrx),2.0)/taux;
-  tmp3y = pow((pi/Mry),2.0)/tauy;
+  tmp3x = (pi*pi)/(Mrx*Mrx*taux);
+  tmp3y = (pi*pi)/(Mry*Mry*tauy);
 
-  for(int j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(-MSP+1+j);
+  for(int j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(j-MSP+1);
 
   #ifdef _OPENMP
   #pragma omp parallel
@@ -119,39 +118,49 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   #endif
   for(int k = 0; k < M; ++k){
 
-    double tmpx = round(u(k)*Mrx/(2*pi));
-    double tmpy = round(v(k)*Mry/(2*pi));
+    double uk = u(k);
+    double vk = v(k);
 
-    mx(k) = (int)tmpx;
-    my(k) = (int)tmpy;
+    // flip all the points to y>=0 region.
+    if(v(k)>=0){
+      y_neg(k) = 0;
+    }
+    else{
+      uk *= -1.0;
+      vk *= -1.0;
+      y_neg(k) = 1;
+    }
 
-    double xix = (2*pi*tmpx)/Mrx;
-    double xiy = (2*pi*tmpy)/Mry;
+    double tmp1x = floor(uk*Mrx/(2.0*pi));
+    double tmp1y = floor(vk*Mry/(2.0*pi));
+
+    mx(k) = (int)tmp1x;
+    my(k) = (int)tmp1y;
+
+    double xix = (2.0*pi*tmp1x)/Mrx;
+    double xiy = (2.0*pi*tmp1y)/Mry;
 
     /* E1 */
 
-    tmpx = -pow((u(k)-xix),2.0)/(4*taux);
-    tmpy = -pow((v(k)-xiy),2.0)/(4*tauy);
+    double tmp2x = -((uk-xix)*(uk-xix))/(4.0*taux);
+    double tmp2y = -((vk-xiy)*(vk-xiy))/(4.0*tauy);
 
-    E1(k) = exp( tmpx + tmpy );
+    E1(k) = exp( tmp2x + tmp2y );
+
+    uvsinc(k) = sinc_function(Nx*uk)*sinc_function(Ny*vk);
 
     /* E2 */
 
-    tmpx = pi*(u(k)-xix)/(Mrx*taux);
-    tmpy = pi*(v(k)-xiy)/(Mry*tauy);
+    double tmp4x = pi*(uk-xix)/(Mrx*taux);
+    double tmp4y = pi*(vk-xiy)/(Mry*tauy);
 
     for(int j = 0; j < MSP2; ++j){
-      E2x(j, k) = exp(tmpcoef[j]*tmpx-tmp3x*((double)((j-MSP+1)*(j-MSP+1))));
-      E2y(j, k) = exp(tmpcoef[j]*tmpy-tmp3y*((double)((j-MSP+1)*(j-MSP+1))));
+      E2x(j, k) = exp(tmpcoef[j]*(tmp4x-tmpcoef[j]*tmp3x));
+      E2y(j, k) = exp(tmpcoef[j]*(tmp4y-tmpcoef[j]*tmp3y));
     }
-  }
 
-  #ifdef _OPENMP
-  #pragma omp for
-  #endif
-  for(int k = 0; k < M; ++k){
-      if(idx_fftw( (my(k)-MSP+1),Mry) < Ny+1 || idx_fftw( (my(k)+MSP),Mry) < Ny+1) cover_o(k) = 1;
-      if(idx_fftw(-(my(k)-MSP+1),Mry) < Ny+1 || idx_fftw(-(my(k)+MSP),Mry) < Ny+1) cover_c(k) = 1;
+    if(mx(k) >= Nx-MSP || mx(k) <= -Nx+MSP)++fov_flag;
+    if(my(k) >= Ny-MSP || my(k) <= -Ny+MSP)++fov_flag;
   }
 
   #ifdef _OPENMP
@@ -163,7 +172,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
     double tmpx = taux*tmpi*tmpi;
 
     for(int j = 0; j< Ny; ++j){
-      double tmpj = (double)(j-Nx/2);
+      double tmpj = (double)(j-Ny/2);
       double tmpy = tauy*tmpj*tmpj;
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
     }
@@ -172,21 +181,27 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   #ifdef _OPENMP
   }
   #endif
+
+  if(fov_flag > 0){
+    cout << " Error: You must increase the Field of View. "
+    << fov_flag
+    << " points are on the edges of the Fourie domain. Continue calculations but the precision can be poor."
+    << endl;
+  }
 }
 
 complex<double> map_0(complex<double> x){return(x);}
 complex<double> map_c(complex<double> x){return(conj(x));}
 
 void NUFFT2d1_sngl(int M, int Nx, int Ny, VectorXd &Xout,
-  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
+  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4, VectorXd &uvsinc,
+  VectorXi &mx, VectorXi &my, VectorXi &y_neg, VectorXcd &buf_ax,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
   MatrixXcd &mbuf_l)
 {
-  int Mh;
+  int Mh = Ny + 1;
+  double MMinv = 1/sqrt((double)(4*Nx*Ny));
   complex<double> (*map_nufft)(complex<double> x);
-
-  Mh =  Ny + 1;
 
   mbuf_l.setZero();
 
@@ -194,47 +209,78 @@ void NUFFT2d1_sngl(int M, int Nx, int Ny, VectorXd &Xout,
   else              map_nufft  = map_0;
 
   for(int k = 0; k < M; ++k){
-    complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
-    if(cover_o(k)==1)
-      mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
-        0.5*v0
-        *E2x.block<MSP2,1>(0,k)
-        *E2y.block<MSP2,1>(0,k).transpose();
+    complex<double> vis = map_nufft(Fin(k));
+    complex<double> v0    = 0;
+    double          scale = 1.0;
 
-    if(cover_c(k)==1)
-      mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
-        0.5*(conj(v0))
-        *E2x.block<MSP2,1>(0,k).colwise().reverse()
-        *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+    if(y_neg(k) == 1) vis = conj(vis);
+
+    double vr = vis.real();
+    double vi = vis.imag();
+
+    if((vr*vr+vi*vi) > 0.0){
+      scale += uvsinc(k)*(vr*vr-vi*vi)/(vr*vr+vi*vi);
+
+      v0 = 2.0*MMinv*E1(k)*vis/sqrt(scale);
+
+      mbuf_l.block<MSP2,MSP2>( mx(k)+1+Nx, my(k)+1) +=
+      v0*E2x.block<MSP2,1>(0,k)*E2y.block<MSP2,1>(0,k).transpose();
+    }
   }
 
-  mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
+  // Conjugate part is flipped and added.
+  mbuf_l.block(MSP+Nx,MSP+1,Nx,  MSP)+=
+  mbuf_l.block(MSP+1, 0,    Nx,  MSP).colwise().reverse().rowwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1,MSP+1, Nx-1,MSP)+=
+  mbuf_l.block(MSP+Nx+1, 0, Nx-1,MSP).colwise().reverse().rowwise().reverse().conjugate();
+
+  // Conjugate x= -Nx line is flipped and added.
+  mbuf_l.block(MSP, MSP+1, 1, MSP-1)+=
+  mbuf_l.block(MSP, 1,     1, MSP-1).rowwise().reverse().conjugate();
+
+  // y=0 line is flipped and added.
+  buf_ax.segment(0,2*Nx) = mbuf_l.block(MSP,MSP,2*Nx,1);
+
+  mbuf_l.block(MSP+Nx+1, MSP, Nx-1,1)+=
+  buf_ax.segment(1,Nx-1).colwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1, MSP,   Nx-1,1)+=
+  buf_ax.segment(Nx+1,Nx-1).colwise().reverse().conjugate();
+
+  // y=Ny line is flipped and added.
+  buf_ax.segment(0,2*Nx) = mbuf_l.block(MSP,MSP+Ny,2*Nx,1);
+
+  mbuf_l.block(MSP+Nx+1,MSP+Ny,Nx-1,1)+=
+  buf_ax.segment(1,Nx-1).colwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1,MSP+Ny,   Nx-1,1)+=
+  buf_ax.segment(Nx+1,Nx-1).colwise().reverse().conjugate();
+
+  // DC component is treated properly
+  mbuf_l(MSP+Nx, MSP) *=2.0;
 
   for(int i = 0; i < Nx; ++i){
     in.segment(i*Mh     ,Mh) =
-      mbuf_l.block(i+MSP2+Nx,MSP2+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP+Nx,MSP,1,Mh).transpose();
     in.segment((i+Nx)*Mh,Mh) =
-      mbuf_l.block(i+MSP2,   MSP2+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP,   MSP,1,Mh).transpose();
   }
 
   fftw_execute(*fftwplan_c2r);
-
   large2small(Nx, Ny, Xout, out, E4);
 }
 
 void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
-  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
+  VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4, VectorXd &uvsinc,
+  VectorXi &mx, VectorXi &my, VectorXi &y_neg, VectorXcd &buf_ax,
   VectorXcd &in, VectorXd &out, fftw_plan *fftwplan_c2r, VectorXcd &Fin,
   MatrixXcd &mbuf_l, std::vector<int> const &tile_boundary)
 {
-  int Mh, threadnum;
-//  complex<double> v0, vy, tmpc;
-//  complex<double> vy, tmpc;
+  int Mh = Ny + 1, threadnum;
+  double MMinv = 1/sqrt((double)(4.0*Nx*Ny));
   complex<double> (*map_nufft)(complex<double> x);
-
-  Mh =  Ny + 1;
 
   mbuf_l.setZero();
 
@@ -248,54 +294,39 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
     for (int itile = 0; itile < ntile; ++itile) {
       for (int k = 0; k < M; ++k) {
         int const myk = my(k);
-        if (cover_o(k) == 1) {
-          int const col_from = myk + MSP + 1 + Ny;
-          int const col_to = col_from + MSP2;
-          int const tile_from = tile_boundary[itile];
-          int const tile_to = tile_boundary[itile + 1];
-          if (tile_from < col_to && col_from < tile_to) {
-            int const icol = (tile_from > col_from) ? tile_from : col_from;
-            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
-            complex<double> v0half = 0.5 * E1(k)*(map_nufft(Fin(k)));
-            int const ix = mx(k) + MSP + 1 + Nx;
-            if (ncol == MSP2) {
-              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
-                v0half
-                * E2x.block<MSP2, 1>(0, k)
-                * E2y.block<MSP2, 1>(0, k).transpose();
-            } else {
-              for (int jcol = 0; jcol < ncol; ++jcol) {
-                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
-                  v0half
-                  * E2x.block<MSP2, 1>(0, k)
-                  * E2y(icol - col_from + jcol, k);
-              }
-            }
+        int const col_from = myk + 1;
+        int const col_to = col_from + MSP2;
+        int const tile_from = tile_boundary[itile];
+        int const tile_to = tile_boundary[itile + 1];
+        if (tile_from < col_to && col_from < tile_to) {
+          int const icol = (tile_from > col_from) ? tile_from : col_from;
+          int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
+          int const ix = mx(k) + 1 + Nx;
+
+          complex<double> vis = map_nufft(Fin(k));
+          complex<double> v0    = 0;
+          double          scale = 1.0;
+
+          if(y_neg(k) == 1) vis = conj(vis);
+
+          double vr = vis.real();
+          double vi = vis.imag();
+
+          if((vr*vr+vi*vi) > 0.0){
+            scale += uvsinc(k)*(vr*vr-vi*vi)/(vr*vr+vi*vi);
+            v0 = 2.0*MMinv*E1(k)*vis/sqrt(scale);
           }
-        }
-        if (cover_c(k) == 1) {
-          int const col_from = - myk + MSP + Ny;
-          int const col_to = col_from + MSP2;
-          int const tile_from = tile_boundary[itile];
-          int const tile_to = tile_boundary[itile + 1];
-          if (tile_from < col_to && col_from < tile_to) {
-            int const icol = (tile_from > col_from) ? tile_from : col_from;
-            int const ncol = ((tile_to < col_to) ? tile_to : col_to) - icol;
-            complex<double> v0half = 0.5 * conj(E1(k)*(map_nufft(Fin(k))));
-            int const ix = - mx(k) + MSP + Nx;
-            if (ncol == MSP2) {
-              mbuf_l.block<MSP2, MSP2>(ix, icol) +=
-                v0half
-                * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-                * E2y.block<MSP2, 1>(0, k).colwise().reverse().transpose();
-            } else {
-              int const offset = max(0, tile_from - col_from);
-              for (int jcol = 0; jcol < ncol; ++jcol) {
-                mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
-                  v0half
-                  * E2x.block<MSP2, 1>(0, k).colwise().reverse()
-                  * E2y(MSP2 - 1 - offset - jcol, k);
-              }
+
+          if (ncol == MSP2) {
+            mbuf_l.block<MSP2, MSP2>(ix, icol) +=
+            v0 * E2x.block<MSP2, 1>(0, k)
+            * E2y.block<MSP2, 1>(0, k).transpose();
+          }
+          else {
+            for (int jcol = 0; jcol < ncol; ++jcol) {
+              mbuf_l.block<MSP2, 1>(ix, icol + jcol) +=
+              v0 * E2x.block<MSP2, 1>(0, k)
+              * E2y(icol - col_from + jcol, k);
             }
           }
         }
@@ -312,30 +343,113 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
       #pragma omp parallel for num_threads(threadnum) reduction(+:mbuf_l)
     #endif
     for(int k = 0; k < M; ++k){
-      complex<double> v0 = E1(k)*(map_nufft(Fin(k)));
 
-      if(cover_o(k)==1)
-        mbuf_l.block<MSP2,MSP2>( mx(k)+MSP+1+Nx, my(k)+MSP+1+Ny) +=
-          0.5*v0
-          *E2x.block<MSP2,1>(0,k)
-          *E2y.block<MSP2,1>(0,k).transpose();
+      complex<double> vis = map_nufft(Fin(k));
+      complex<double> v0    = 0;
+      double          scale = 1.0;
 
-      if(cover_c(k)==1)
-        mbuf_l.block<MSP2,MSP2>(-mx(k)+MSP+Nx,-my(k)+MSP+Ny) +=
-          0.5*(conj(v0))
-          *E2x.block<MSP2,1>(0,k).colwise().reverse()
-          *E2y.block<MSP2,1>(0,k).colwise().reverse().transpose();
+      if(y_neg(k) == 1) vis = conj(vis);
+
+      double vr = vis.real();
+      double vi = vis.imag();
+
+      if((vr*vr+vi*vi) > 0.0){
+        scale += uvsinc(k)*(vr*vr-vi*vi)/(vr*vr+vi*vi);
+        v0 = 2.0*MMinv*E1(k)*vis/sqrt(scale);
+      }
+
+      mbuf_l.block<MSP2,MSP2>( mx(k)+1+Nx, my(k)+1) +=
+      v0*E2x.block<MSP2,1>(0,k)*E2y.block<MSP2,1>(0,k).transpose();
     }
   }
 
   #ifdef _OPENMP
+
+  // Conjugate part is flipped and added.
+
   #pragma omp parallel for
-  for (int i = 0; i < mbuf_l.rows(); ++i) {
-      mbuf_l(i, MSP2 + 2 * Ny) = mbuf_l(i, MSP2);
+  for(int i = 0 ; i < Nx; ++i){
+    for(int j = 0 ; j < MSP; ++j)
+      mbuf_l(MSP+Nx+i, MSP+1+j) += conj(mbuf_l(MSP+Nx-i, MSP-1-j));
   }
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < Nx-1; ++i){
+    for(int j = 0 ; j < MSP; ++j)
+      mbuf_l(MSP+1+i, MSP+1+j)+= conj(mbuf_l(MSP+2*Nx-1-i, MSP-1-j));
+  }
+
+  // Conjugate x= -Nx line is flipped and added.
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < MSP-1; ++i)
+    mbuf_l(MSP, MSP+1+i) += conj(mbuf_l(MSP, MSP-1-i));
+
+  // y=0 line is flipped and added.
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < 2*Nx; ++i) buf_ax(i) = mbuf_l(MSP+i,MSP);
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < Nx-1; ++i)
+    mbuf_l(MSP+Nx+1+i,MSP) += conj(buf_ax(Nx-1-i));
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < Nx-1; ++i)
+    mbuf_l(MSP+1+i,   MSP) += conj(buf_ax(2*Nx-1-i));
+
+  // y=Ny line is flipped and added.
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < 2*Nx; ++i) buf_ax(i) = mbuf_l(MSP+i,MSP+Ny);
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < Nx-1; ++i)
+    mbuf_l(MSP+Nx+1+i,MSP+Ny) += conj(buf_ax(Nx-1-i));
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < Nx-1; ++i)
+    mbuf_l(MSP+1+i,   MSP+Ny) += conj(buf_ax(2*Nx-1-i));
+
   #else
-  mbuf_l.block(0,MSP2+2*Ny,2*Nx+MSP4,1) = mbuf_l.block(0,MSP2,2*Nx+MSP4,1);
+
+  // Conjugate part is flipped and added.
+
+  mbuf_l.block(MSP+Nx, MSP+1, Nx,  MSP)+=
+  mbuf_l.block(MSP+1,      0, Nx,  MSP).colwise().reverse().rowwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1,  MSP+1, Nx-1,MSP)+=
+  mbuf_l.block(MSP+Nx+1,   0, Nx-1,MSP).colwise().reverse().rowwise().reverse().conjugate();
+
+  // Conjugate x= -Nx line is flipped and added.
+
+  mbuf_l.block(MSP, MSP+1, 1, MSP-1)+=
+  mbuf_l.block(MSP, 1,  1, MSP-1).rowwise().reverse().conjugate();
+
+  // y=0 line is flipped and added.
+
+  buf_ax.segment(0,2*Nx) = mbuf_l.block(MSP,MSP,2*Nx,1);
+
+  mbuf_l.block(MSP+Nx+1,MSP,Nx-1,1)+=
+  buf_ax.segment(1,Nx-1).colwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1,MSP,   Nx-1,1)+=
+  buf_ax.segment(Nx+1,Nx-1).colwise().reverse().conjugate();
+
+  // y=Ny line is flipped and added.
+
+  buf_ax.segment(0,2*Nx) = mbuf_l.block(MSP,MSP+Ny,2*Nx,1);
+
+  mbuf_l.block(MSP+Nx+1,MSP+Ny,Nx-1,1)+=
+  buf_ax.segment(1,Nx-1).colwise().reverse().conjugate();
+
+  mbuf_l.block(MSP+1,MSP+Ny,   Nx-1,1)+=
+  buf_ax.segment(Nx+1,Nx-1).colwise().reverse().conjugate();
+
   #endif
+
+  // DC component is treated properly
+  mbuf_l(MSP+Nx, MSP) *=2.0;
 
   //openmp
   #ifdef _OPENMP
@@ -343,114 +457,89 @@ void NUFFT2d1(int M, int Nx, int Ny, VectorXd &Xout,
   #endif
   for(int i = 0; i < Nx; ++i){
     in.segment(i*Mh     ,Mh) =
-      mbuf_l.block(i+MSP2+Nx,MSP2+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP+Nx,MSP,1,Mh).transpose();
     in.segment((i+Nx)*Mh,Mh) =
-      mbuf_l.block(i+MSP2,   MSP2+Ny,1,Mh).transpose();
+      mbuf_l.block(i+MSP,   MSP,1,Mh).transpose();
   }
 
   fftw_execute(*fftwplan_c2r);
-
   large2small(Nx, Ny, Xout, out, E4);
 }
 
 void NUFFT2d2(int M, int Nx, int Ny, VectorXcd &Fout, VectorXd &E1,
   MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my,
+  VectorXi &mx, VectorXi &my, VectorXi &y_neg,
  	VectorXd &in, VectorXcd &out, fftw_plan *fftwplan_r2c, VectorXd &Xin, MatrixXcd &mbuf_h)
 {
-  int Mrx, Mry, Mh;
-  double MMinv;
-  complex<double> (*map0_nufft)(complex<double> x),(*mapc_nufft)(complex<double> x);
+  int Mrx = 2*Nx, Mry = 2*Ny, Mh = Ny + 1;
+  double MMinv = 1/((double)(Mrx*Mry));
+  complex<double> (*map0_nufft)(complex<double> x);
 
-  if(NU_SIGN == -1) {map0_nufft  = map_c; mapc_nufft = map_0;}
-  else              {map0_nufft  = map_0; mapc_nufft = map_c;}
-
-  Mrx = 2*Nx;
-  Mry = 2*Ny;
-  Mh  = Ny+1;
-  MMinv = 1/((double)Mrx*Mry);
+  if(NU_SIGN == -1) map0_nufft  = map_c;
+  else              map0_nufft  = map_0;
 
   small2large(Nx, Ny, in, Xin, E4);
-
   fftw_execute(*fftwplan_r2c);
+
+  mbuf_h.setZero();
 
   //openmp
   #ifdef _OPENMP
     #pragma omp parallel for
   #endif
   for(int i = 0; i < Nx; ++i){
-    mbuf_h.block(0,i+Nx,Mh,1) = out.segment(i*Mh,     Mh);
-    mbuf_h.block(0,i,   Mh,1) = out.segment((i+Nx)*Mh,Mh);
+    mbuf_h.block(MSP,i+Nx+MSP,Mh,1) = out.segment(i*Mh,     Mh);
+    mbuf_h.block(MSP,i+MSP,   Mh,1) = out.segment((i+Nx)*Mh,Mh);
   }
+
+  //openmp
+  #ifdef _OPENMP
+
+  // Conjugate part is flipped and concatinated.
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < MSP; ++i){
+    for(int j = 0 ; j < Nx; ++j)
+      mbuf_h(i, MSP+1+j) += conj(mbuf_h(MSP2-i, MSP+2*Nx-1-j));
+  }
+
+  #pragma omp parallel for
+  for(int i = 0 ; i < MSP; ++i){
+    for(int j = 0 ; j < Nx-1; ++j)
+      mbuf_h(i, MSP+Nx+1+j) += conj(mbuf_h(MSP2-i, MSP+Nx-1-j));
+  }
+
+  #else
+  mbuf_h.block(0,    MSP+1, MSP, Nx) =
+  mbuf_h.block(MSP+1,MSP+Nx,MSP, Nx).colwise().reverse().rowwise().reverse().conjugate();
+
+  mbuf_h.block(0, MSP+Nx+1, MSP, Nx-1) =
+  mbuf_h.block(MSP+1,MSP+1, MSP, Nx-1).colwise().reverse().rowwise().reverse().conjugate();
+
+  #endif
 
   //openmp
   #ifdef _OPENMP
     #pragma omp parallel for schedule(guided)
   #endif
   for(int k = 0; k < M; ++k){
-
-    double st0 = idx_fftw( (my(k)-MSP+1),Mry);
-    double ed0 = idx_fftw( (my(k)+MSP),  Mry);
-
-    double stc = idx_fftw(-(my(k)+MSP),  Mry);
-    double edc = idx_fftw(-(my(k)-MSP+1),Mry);
-
-    if((st0 < ed0) && st0 >=0 && ed0 <= Mh ){
-
-      Fout(k) = MMinv*E1(k)*map0_nufft(
-        ((E2y.block<MSP2,1>(0,k)*(E2x.block<MSP2,1>(0,k).transpose())).array()
-          *(mbuf_h.block<MSP2,MSP2>(st0,mx(k)-MSP+1+Nx)).array()).sum()
-        );
-    }
-    else if((stc < edc) && stc >=0 && edc <= Mh ){
-
-      Fout(k) = MMinv*E1(k)*mapc_nufft(
-        (((E2y.block<MSP2,1>(0,k).colwise().reverse())
-            *(E2x.block<MSP2,1>(0,k).colwise().reverse().transpose())).array()
-          *(mbuf_h.block<MSP2,MSP2>(stc,-mx(k)-MSP+Nx)).array()).sum()
-        );
-
-    }
-    else{
-      Fout(k) = 0;
-      for(int ly = 0; ly < MSP2; ++ly){
-
-        int j = idx_fftw((my(k)+ly-MSP+1),Mry);
-        double tmp = MMinv*E1(k)*E2y(ly,k);
-
-        if(j < (Ny+1)){
-          Fout(k) +=
-            map0_nufft(
-              tmp
-              *(E2x.block<MSP2,1>(0,k).transpose().dot(
-                (mbuf_h.block<1,MSP2>(j,mx(k)-MSP+1+Nx).transpose())))
-              );
-        }
-        else{
-          j = idx_fftw(-(my(k)+ly-MSP+1),Mry);
-          if(j < (Ny+1)){
-            Fout(k) +=
-              mapc_nufft(
-                tmp
-                *(E2x.block<MSP2,1>(0,k).transpose().dot(
-                  (mbuf_h.block<1,MSP2>(j,-mx(k)-MSP+Nx).rowwise().reverse().transpose())))
-                );
-          }
-        }
-      }
-    }
+    Fout(k) = MMinv*E1(k)*map0_nufft(
+      ((E2y.block<MSP2,1>(0,k)*(E2x.block<MSP2,1>(0,k).transpose())).array()
+      *(mbuf_h.block<MSP2,MSP2>(my(k)+1,mx(k)+Nx+1)).array()).sum()
+    );
+    if(y_neg[k] == 1) Fout(k) = conj(Fout(k));
   }
 }
 
 double calc_F_part_nufft(int M, int Nx, int Ny,
   VectorXcd &yAx,
   VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y, VectorXd &E4,
-  VectorXi &mx, VectorXi &my,
+  VectorXi &mx, VectorXi &my, VectorXi &y_neg,
   VectorXd &in_r, VectorXcd &out_c,
   fftw_plan *fftwplan_r2c, VectorXcd &vis, VectorXd &weight, VectorXd &xvec,
   MatrixXcd &mbuf_h)
 {
-  NUFFT2d2(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
+  NUFFT2d2(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my, y_neg,
     in_r, out_c, fftwplan_r2c, xvec, mbuf_h);
 
   #ifdef _OPENMP
@@ -459,9 +548,9 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
   for (int i = 0; i < vis.size(); ++i) {
       auto const tmp = (vis[i] - yAx[i]) * weight[i];
       yAx[i] = tmp;
-      sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag()) / 2;
+      sqnorm += (tmp.real() * tmp.real() + tmp.imag() * tmp.imag());
   }
-  return sqnorm;
+  return (sqnorm/2.0);
   #else
   yAx = (vis.array() - yAx.array())*weight.array();
 
@@ -471,15 +560,15 @@ double calc_F_part_nufft(int M, int Nx, int Ny,
 
 void dF_dx_nufft(int M, int Nx, int Ny, VectorXd &dFdx,
 		 VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
-		 VectorXd &E4,
-		 VectorXi &mx, VectorXi &my, VectorXi &cover_o, VectorXi &cover_c,
+		 VectorXd &E4, VectorXd &uvsinc,
+		 VectorXi &mx, VectorXi &my, VectorXi &y_neg, VectorXcd &buf_ax,
 		 VectorXcd &in_c, VectorXd &out_r, fftw_plan *fftwplan_c2r,
 		 VectorXd &weight, VectorXcd &yAx, MatrixXcd &mbuf_l,
          std::vector<int> const &tile_boundary)
 {
   yAx.array() *= weight.array();
 
-  NUFFT2d1(M, Nx, Ny, dFdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
+  NUFFT2d1(M, Nx, Ny, dFdx, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg, buf_ax,
 	   in_c, out_r, fftwplan_c2r, yAx, mbuf_l, tile_boundary);
 }
 
@@ -578,10 +667,9 @@ void sort_input(int const M, int const Nx, int const Ny, double *u_dx, double *v
   }
 }
 
-
 void configure_tile(
     int npixels, int nthreads, int Ny,
-    VectorXi const &my, VectorXi const &cover_o, VectorXi const &cover_c,
+    VectorXi const &my,
     std::vector<int> &tile_boundary)
 {
     assert(nthreads > 0);
@@ -590,21 +678,12 @@ void configure_tile(
     // make histogram
     std::vector<unsigned long> hist(npixels, 0ul);
     for (int k = 0; k < my.size(); ++k) {
-        int const myk = my(k);
-        if (cover_o(k)) {
-            int const col_from = myk + MSP + 1 + Ny;
-            int const col_to = col_from + MSP2;
-            for (int i = col_from; i < col_to; ++i) {
-                hist[i] += 1;
-            }
-        }
-        if (cover_c(k)) {
-            int const col_from = - myk + MSP + Ny;
-            int const col_to = col_from + MSP2;
-            for (int i = col_from; i < col_to; ++i) {
-                hist[i] += 1;
-            }
-        }
+      int const myk = my(k);
+      int const col_from = myk + 1;
+      int const col_to = col_from + MSP2;
+      for (int i = col_from; i < col_to; ++i) {
+        hist[i] += 1;
+      }
     }
     unsigned long const hist_total = std::accumulate(hist.begin(), hist.end(), 0ul);
 
@@ -623,30 +702,7 @@ void configure_tile(
         count += hist[i];
     }
     tile_boundary.push_back(npixels);
-
-    // std::cout << "hist: total " << hist_total << " ndata " << ndata << std::endl;
-    // char delim2 = '[';
-    // for (auto i = hist.begin(); i != hist.end(); ++i) {
-    //     std::cout << delim2 << " " << *i;
-    //     delim2 = ',';
-    // }
-    // std::cout << " ]" << std::endl;
-
-    // std::cout << "npixels = " << npixels << " nthreads = " << nthreads << std::endl;
-    // std::cout << "tile_boundary: " << tile_boundary.size() << " boundaries" << std::endl;
-    // char delim = '[';
-    // for (auto i = tile_boundary.begin(); i != tile_boundary.end(); ++i) {
-    //     std::cout << delim << " " << *i;
-    //     delim = ',';
-    // }
-    // std::cout << " ]" << std::endl;
-    // std::cout << "   ";
-    // for (size_t i = 0; i < tile_boundary.size() - 1; ++i) {
-    //     std::cout << tile_boundary[i + 1] - tile_boundary[i] << "   ";
-    // }
-    // std::cout << std::endl;
 }
-
 
 int mfista_L1_TSV_core_nufft(double *xout,
 			     int M, int Nx, int Ny, double *u_dx, double *v_dy,
@@ -665,10 +721,10 @@ int mfista_L1_TSV_core_nufft(double *xout,
   fftw_plan fftwplan_c2r, fftwplan_r2c;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, cost, rvec, xtmp, xnew, zvec, dfdx, dtmp, weight, xvec,
+  VectorXi mx, my, y_neg;
+  VectorXd E1, E4, uvsinc, cost, rvec, xtmp, xnew, zvec, dfdx, dtmp, weight, xvec,
            box, u, v, buf_diff;
-  VectorXcd yAx, vis, cvec;
+  VectorXcd yAx, vis, cvec, buf_ax;
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_l, mbuf_h;
 
@@ -678,12 +734,12 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   mx      = VectorXi::Zero(M);
   my      = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
+  y_neg   = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
   E2x     = MatrixXd::Zero(MSP2, M);
   E2y     = MatrixXd::Zero(MSP2, M);
   E4      = VectorXd::Zero(NN);
+  uvsinc  = VectorXd::Zero(M);
 
   rvec    = VectorXd::Zero(4*NN);
   cost    = VectorXd::Zero(maxiter);
@@ -696,8 +752,9 @@ int mfista_L1_TSV_core_nufft(double *xout,
   yAx     = VectorXcd::Zero(M);
   vis     = VectorXcd::Zero(M);
   cvec    = VectorXcd::Zero(2*Nx*(Ny+1));
-  mbuf_l  = MatrixXcd::Zero(2*Nx+MSP4,2*Ny+MSP4);
-  mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
+  buf_ax  = VectorXcd::Zero(2*Nx);
+  mbuf_l  = MatrixXcd::Zero(2*Nx+MSP2,Ny+MSP2+1);
+  mbuf_h  = MatrixXcd::Zero(Ny+MSP2+1,2*Nx+MSP2);
 
   weight  = VectorXd::Zero(M);
 
@@ -729,11 +786,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   // prepare for nufft
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg);
 
   #ifdef _OPENMP
     // adaptive configuration of tiles
-    configure_tile(mbuf_l.cols(), omp_get_max_threads(), Ny, my, cover_o, cover_c, tile_boundary);
+    configure_tile(mbuf_l.cols(), omp_get_max_threads(), Ny, my, tile_boundary);
   #endif
 
   // for fftw
@@ -775,7 +832,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   // main
 
-  costtmp = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
+  costtmp = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my, y_neg,
 			      rvec, cvec, &fftwplan_r2c, vis, weight, xvec, mbuf_h);
 
   l1cost = xvec.lpNorm<1>();
@@ -797,10 +854,10 @@ int mfista_L1_TSV_core_nufft(double *xout,
       << cost(iter) << ", c = " << c << endl;
     }
 
-    Qcore = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
+    Qcore = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my, y_neg,
       rvec, cvec, &fftwplan_r2c, vis, weight, zvec, mbuf_h);
 
-    dF_dx_nufft(M, Nx, Ny, dfdx, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
+    dF_dx_nufft(M, Nx, Ny, dfdx, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg, buf_ax,
       cvec, rvec, &fftwplan_c2r, weight, yAx, mbuf_l, tile_boundary);
 
     if( lambda_tsv > 0.0 ){
@@ -815,7 +872,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
       xtmp = zvec + dfdx/c;
       soft_th_box(xnew, xtmp, lambda_l1/c, box_flag, box);
 
-      Fval = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
+      Fval = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my, y_neg,
         rvec, cvec, &fftwplan_r2c, vis, weight, xnew, mbuf_h);
 
       if( lambda_tsv > 0.0 ){
@@ -869,13 +926,15 @@ int mfista_L1_TSV_core_nufft(double *xout,
     mu = munew;
   }
   if(iter == maxiter){
-    cout << iter << " cost = " << cost(iter-1) << endl;
+    cout << std::setw(5) << iter << " cost = " << fixed << setprecision(5)
+    << cost(iter-1) << endl;
     iter = iter -1;
   }
   else
-    cout << iter+1 << " cost = "  << cost(iter) << endl;
+    cout << std::setw(5) << iter+1 << " cost = "  << fixed << setprecision(5)
+    << cost(iter) << endl;
 
-  printf("\n");
+  cout << endl;
 
   *cinit = c;
 
@@ -895,123 +954,89 @@ int mfista_L1_TSV_core_nufft(double *xout,
   return(iter+1);
 }
 
-/* results */
+/* calculate costs */
 
-void calc_result_nufft(struct RESULT *mfista_result,
+void calc_costs_nufft(struct RESULT *mfista_costs,
 		       int M, int Nx, int Ny, double *u_dx, double *v_dy,
 		       double *vis_r, double *vis_i, double *vis_std,
 		       double lambda_l1, double lambda_tv, double lambda_tsv,
 		       double *xvec)
 {
   int i, NN = Nx*Ny;
-  double tmp, *rvecf;
-  fftw_complex *cvecf;
-  fftw_plan fftwplan_r2c;
-  unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
-
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, weight, rvec, x, u, v, buf_diff;
-  VectorXcd yAx, vis, cvec;
-  MatrixXd E2x, E2y;
-  MatrixXcd mbuf_h;
-
-  cout << "Memory allocation and preparations." << endl;
-
-  mx      = VectorXi::Zero(M);
-  my      = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  E1      = VectorXd::Zero(M);
-  E2x     = MatrixXd::Zero(MSP2,M);
-  E2y     = MatrixXd::Zero(MSP2,M);
-  E4      = VectorXd::Zero(NN);
-
-  mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
+  double chisq = 0, tmp_1, tmp_r, tmp_i, tmp_w, *yr_p, *yi_p;
+  VectorXd x, buf_diff, yr, yi;
 
   buf_diff = VectorXd::Zero(Nx-1);
-  rvec = VectorXd::Zero(4*NN);
-  cvec = VectorXcd::Zero(2*Nx*(Ny+1));
-  u = Map<VectorXd>(u_dx,M);
-  v = Map<VectorXd>(v_dy,M);
   x = Map<VectorXd>(xvec,NN);
 
-  // prepare for nufft
+  yr   = VectorXd::Zero(M);
+  yi   = VectorXd::Zero(M);
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  yr_p = &yr[0];
+  yi_p = &yi[0];
 
-  // for fftw
+  x2y_nufft(u_dx, v_dy, M, Nx, Ny, xvec, yr_p, yi_p);
 
-  rvecf = &rvec[0];
-  cvecf = fftw_cast(cvec.data());
-
-  //openmp
-  #ifdef _OPENMP
-  if(fftw_init_threads()){
-    fftw_plan_with_nthreads(omp_get_max_threads());
-  }
-  #endif
-
-  fftwplan_r2c = fftw_plan_dft_r2c_2d(2*Nx,2*Ny, rvecf, cvecf, fftw_plan_flag);
-
-  yAx    = VectorXcd::Zero(M);
-  vis    = VectorXcd::Zero(M);
-  weight = VectorXd::Zero(M);
 
   for(i = 0; i < M; ++i){
-    vis(i) = complex<double>(vis_r[i],vis_i[i]);
-    weight(i) = 1/vis_std[i];
+    tmp_r = (vis_r[i] - yr[i]);
+    tmp_i = (vis_i[i] - yi[i]);
+    tmp_w = 1/(vis_std[i]);
+
+    chisq += (tmp_r*tmp_r + tmp_i*tmp_i)*(tmp_w*tmp_w);
   }
-
-  // computing results
-
-  tmp = calc_F_part_nufft(M, Nx, Ny, yAx, E1, E2x, E2y, E4, mx, my,
- 			  rvec, cvec, &fftwplan_r2c, vis, weight, x, mbuf_h);
 
 //   /* saving results */
 
-  mfista_result->sq_error = 2*tmp;
+  mfista_costs->sq_error = chisq;
 
-  mfista_result->M  = (int)(M/2);
-  mfista_result->N  = NN;
-  mfista_result->NX = Nx;
-  mfista_result->NY = Ny;
+  mfista_costs->M  = M;
+  mfista_costs->N  = NN;
+  mfista_costs->NX = Nx;
+  mfista_costs->NY = Ny;
 
-  mfista_result->lambda_l1  = lambda_l1;
-  mfista_result->lambda_tv  = lambda_tv;
-  mfista_result->lambda_tsv = lambda_tsv;
+  mfista_costs->lambda_l1  = lambda_l1;
+  mfista_costs->lambda_tv  = lambda_tv;
+  mfista_costs->lambda_tsv = lambda_tsv;
 
-  mfista_result->mean_sq_error = mfista_result->sq_error/((double)M);
+  mfista_costs->mean_sq_error = mfista_costs->sq_error/((double)M);
 
-  mfista_result->l1cost   = 0;
-  mfista_result->N_active = 0;
+  mfista_costs->l1cost   = 0;
+  mfista_costs->N_active = 0;
 
   for(i = 0; i < NN; ++i){
-    tmp = fabs(x(i));
-    if(tmp > 0){
-      mfista_result->l1cost += tmp;
-      ++ mfista_result->N_active;
+    tmp_1 = fabs(xvec[i]);
+    if(tmp_1 > 0){
+      mfista_costs->l1cost += tmp_1;
+      ++ mfista_costs->N_active;
     }
   }
 
-  mfista_result->finalcost = (mfista_result->sq_error)/2;
+  mfista_costs->finalcost = (mfista_costs->sq_error)/2;
 
   if(lambda_l1 > 0)
-    mfista_result->finalcost += lambda_l1*(mfista_result->l1cost);
+    mfista_costs->finalcost += lambda_l1*(mfista_costs->l1cost);
 
   if(lambda_tsv > 0){
-    mfista_result->tsvcost = TSV(Nx, Ny, x, buf_diff);
-    mfista_result->finalcost += lambda_tsv*(mfista_result->tsvcost);
+    mfista_costs->tsvcost = TSV(Nx, Ny, x, buf_diff);
+    mfista_costs->finalcost += lambda_tsv*(mfista_costs->tsvcost);
   }
-  //  else if (lambda_tv > 0){
-  //    mfista_result->tvcost = TV(Nx, Ny, x);
-  //    mfista_result->finalcost += lambda_tv*(mfista_result->tvcost);
-  //  }
+}
 
-  fftw_destroy_plan(fftwplan_r2c);
+/* cheking the costs */
 
-  #ifdef _OPENMP
-    fftw_cleanup_threads();
-  #endif
+void show_costs(struct RESULT *mfista_costs)
+{
+  cout << endl;
+  cout << "  wieghted chi-sq " << mfista_costs->sq_error   << endl;
+  cout << "lambda_l1:        " << mfista_costs->lambda_l1  << endl;
+  cout << "  L1 cost         " << mfista_costs->l1cost     << endl;
+  cout << "lambda_tsv:       " << mfista_costs->lambda_tsv << endl;
+  if((mfista_costs->lambda_tsv) > 0){
+    cout << "  TSV cost        " << mfista_costs->tsvcost << endl;
+  }
+  cout << "total cost        " << mfista_costs->finalcost << endl;
+  cout << endl;
 }
 
 /* main subroutine */
@@ -1022,7 +1047,7 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
 			       double lambda_l1, double lambda_tv, double lambda_tsv,
 			       double cinit, double *xinit, double *xout,
 			       int nonneg_flag, int box_flag, float *cl_box,
-			       struct RESULT *mfista_result)
+			       struct RESULT *mfista_costs)
 {
   int i, iter = 0;
   double epsilon, s_t, e_t, c = cinit;
@@ -1034,6 +1059,11 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
   for(i = 0; i < M; ++i) epsilon += vis_r[i]*vis_r[i] + vis_i[i]*vis_i[i];
 
   epsilon *= eps/((double)M);
+
+  calc_costs_nufft(mfista_costs, M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std,
+      lambda_l1, lambda_tv, lambda_tsv, xinit);
+
+  show_costs(mfista_costs);
 
   get_current_time(&time_spec1);
 
@@ -1056,15 +1086,19 @@ void mfista_imaging_core_nufft(double *u_dx, double *v_dy,
   s_t = (double)time_spec1.tv_sec + (10e-10)*(double)time_spec1.tv_nsec;
   e_t = (double)time_spec2.tv_sec + (10e-10)*(double)time_spec2.tv_nsec;
 
-  mfista_result->comp_time = e_t-s_t;
-  mfista_result->ITER      = iter;
-  mfista_result->nonneg    = nonneg_flag;
-  mfista_result->Lip_const = c;
-  mfista_result->maxiter   = maxiter;
+  mfista_costs->comp_time = e_t-s_t;
+  mfista_costs->ITER      = iter;
+  mfista_costs->nonneg    = nonneg_flag;
+  mfista_costs->Lip_const = c;
+  mfista_costs->maxiter   = maxiter;
 
-  calc_result_nufft(mfista_result, M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std,
+  cout << endl;
+  cout << " computation time: "  << mfista_costs->comp_time << endl;
+
+  calc_costs_nufft(mfista_costs, M, Nx, Ny, u_dx, v_dy, vis_r, vis_i, vis_std,
     lambda_l1, lambda_tv, lambda_tsv, xout);
 
+  show_costs(mfista_costs);
 }
 
 void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
@@ -1076,8 +1110,8 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
   fftw_plan fftwp;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, rvec, x, u, v;
+  VectorXi mx, my, y_neg;
+  VectorXd E1, E4, uvsinc, rvec, x, u, v;
   VectorXcd Ax, vis, cvec;
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_h;
@@ -1087,18 +1121,18 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   mx      = VectorXi::Zero(M);
   my      = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
+  y_neg   = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
   E2x     = MatrixXd::Zero(MSP2,M);
   E2y     = MatrixXd::Zero(MSP2,M);
   E4      = VectorXd::Zero(NN);
+  uvsinc  = VectorXd::Zero(M);
 
   rvec    = VectorXd::Zero(4*NN);
 
   Ax      = VectorXcd::Zero(M);
   cvec    = VectorXcd::Zero(2*Nx*(Ny+1));
-  mbuf_h  = MatrixXcd::Zero(Ny+1,2*Nx);
+  mbuf_h  = MatrixXcd::Zero(Ny+1+MSP2,2*Nx+MSP2);
 
   u = Map<VectorXd>(u_dx,M);
   v = Map<VectorXd>(v_dy,M);
@@ -1108,7 +1142,7 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   // prepare for nufft
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg);
 
   // for fftw
 
@@ -1127,7 +1161,7 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   // computing results
 
-  NUFFT2d2(M, Nx, Ny, Ax, E1, E2x, E2y, E4, mx, my, rvec, cvec, &fftwp, x, mbuf_h);
+  NUFFT2d2(M, Nx, Ny, Ax, E1, E2x, E2y, E4, mx, my, y_neg, rvec, cvec, &fftwp, x, mbuf_h);
 
   for(i = 0; i < M; ++i){
     y_r[i] = Ax(i).real()*Coeff;
@@ -1147,14 +1181,14 @@ void y2x_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 			         double *yin_r, double *yin_i, double *xout)
 {
   int i, NN = Nx*Ny;
-  double *rvecf, Coeff = 1/sqrt((double)NN);
+  double *rvecf;
   fftw_complex *cvecf;
   fftw_plan fftwp;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
 
-  VectorXi mx, my, cover_o, cover_c;
-  VectorXd E1, E4, rvec, x, u, v;
-  VectorXcd vis, cvec;
+  VectorXi mx, my, y_neg;
+  VectorXd E1, E4, uvsinc, rvec, x, u, v;
+  VectorXcd vis, cvec, buf_ax;
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_l;
 
@@ -1163,18 +1197,19 @@ void y2x_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   mx      = VectorXi::Zero(M);
   my      = VectorXi::Zero(M);
-  cover_c = VectorXi::Zero(M);
-  cover_o = VectorXi::Zero(M);
+  y_neg   = VectorXi::Zero(M);
   E1      = VectorXd::Zero(M);
   E2x     = MatrixXd::Zero(MSP2,M);
   E2y     = MatrixXd::Zero(MSP2,M);
   E4      = VectorXd::Zero(NN);
+  uvsinc  = VectorXd::Zero(M);
 
   rvec    = VectorXd::Zero(4*NN);
 
   vis     = VectorXcd::Zero(M);
   cvec    = VectorXcd::Zero(2*Nx*(Ny+1));
-  mbuf_l  = MatrixXcd::Zero(2*Nx+MSP4,2*Ny+MSP4);
+  buf_ax  = VectorXcd::Zero(2*Nx);
+  mbuf_l  = MatrixXcd::Zero(2*Nx+MSP2,Ny+1+MSP2);
 
   u       = Map<VectorXd>(u_dx,M);
   v       = Map<VectorXd>(v_dy,M);
@@ -1184,7 +1219,7 @@ void y2x_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   // prepare for nufft
 
-  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, mx, my, cover_o, cover_c);
+  preNUFFT(M, Nx, Ny, u, v, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg);
 
   // for fftw
 
@@ -1205,10 +1240,10 @@ void y2x_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 
   for(i = 0; i < M; ++i) vis(i) = complex<double>(yin_r[i], yin_i[i]);
 
-  NUFFT2d1_sngl(M, Nx, Ny, x, E1, E2x, E2y, E4, mx, my, cover_o, cover_c,
-  	       cvec, rvec, &fftwp, vis, mbuf_l);
+  NUFFT2d1_sngl(M, Nx, Ny, x, E1, E2x, E2y, E4, uvsinc, mx, my, y_neg, buf_ax,
+             cvec, rvec, &fftwp, vis, mbuf_l);
 
-  for(i = 0; i < NN; ++i) xout[i] = Coeff*x(i);
+  for(i = 0; i < NN; ++i) xout[i] = x(i);
 
   cout << "Cleaning fftw plan." << endl;
 

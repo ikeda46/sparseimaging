@@ -32,8 +32,8 @@
 #define MSP 6
 
 // 2022/01/25
-#define MSP2 12	// MSP*2
-#define MSP4 24	// MSP*4
+#define MSP2 MSP*2
+#define MSP4 MSP*4
 
 using namespace std;
 using namespace Eigen;
