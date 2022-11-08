@@ -1105,7 +1105,7 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
 			         double *xin, double *y_r, double *y_i)
 {
   int i, NN = Nx*Ny;
-  double *rvecf, Coeff = 1/sqrt((double)NN);
+  double *rvecf;
   fftw_complex *cvecf;
   fftw_plan fftwp;
   unsigned int fftw_plan_flag = FFTW_ESTIMATE | FFTW_DESTROY_INPUT;
@@ -1164,8 +1164,8 @@ void x2y_nufft(double *u_dx, double *v_dy, int M, int Nx, int Ny,
   NUFFT2d2(M, Nx, Ny, Ax, E1, E2x, E2y, E4, mx, my, y_neg, rvec, cvec, &fftwp, x, mbuf_h);
 
   for(i = 0; i < M; ++i){
-    y_r[i] = Ax(i).real()*Coeff;
-    y_i[i] = Ax(i).imag()*Coeff;
+    y_r[i] = Ax(i).real();
+    y_i[i] = Ax(i).imag();
   }
 
   cout << "Cleaning fftw plan." << endl;
