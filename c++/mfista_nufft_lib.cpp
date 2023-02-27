@@ -847,6 +847,9 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   for(iter = 0; iter < maxiter; iter++){
 
+    // renewal process
+    if((iter % 50) == 0) mu = 1;
+	  
     cost(iter) = costtmp;
 
     if((iter % 10) == 0){
