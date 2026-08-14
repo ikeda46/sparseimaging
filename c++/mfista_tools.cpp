@@ -86,20 +86,28 @@ void soft_threshold_nonneg_box(VectorXd &nvec, VectorXd &vec, double eta,
 
 // TSV
 
+// NOTE: the image array xvec/dvec is laid out flat as index = Ny*i + j for
+// i in [0,Nx), j in [0,Ny) -- i.e. Nx rows of length Ny -- matching the
+// convention used throughout the FFT/NUFFT machinery (see E4 in
+// mfista_nufft_lib.cpp and the FFTW r2c row length Ny_h derivation in
+// mfista_fft_lib.cpp). TSV/d_TSV must iterate with the same convention so
+// that the regularization gradient lines up with the same pixels as the
+// data-fidelity gradient; previously this used a row length of Nx instead
+// of Ny, which is only equivalent when Nx==Ny.
 double TSV(int Nx, int Ny, VectorXd &xvec, VectorXd &buf_diff)
 {
-  int j;
+  int i;
   double tsv = 0;
 
-  for(j = 0; j < Ny-1; j++){
-    buf_diff = xvec.segment(Nx*j,Nx-1)-xvec.segment(Nx*j+1,Nx-1);
+  for(i = 0; i < Nx-1; i++){
+    buf_diff = xvec.segment(Ny*i,Ny-1)-xvec.segment(Ny*i+1,Ny-1);
     tsv += buf_diff.squaredNorm();
-    buf_diff = xvec.segment(Nx*j,Nx-1)-xvec.segment(Nx*(j+1),Nx-1);
+    buf_diff = xvec.segment(Ny*i,Ny-1)-xvec.segment(Ny*(i+1),Ny-1);
     tsv += buf_diff.squaredNorm();
-    tsv += pow((xvec(Nx*j+(Nx-1))-xvec(Nx*(j+1)+(Nx-1))),2.0);
+    tsv += pow((xvec(Ny*i+(Ny-1))-xvec(Ny*(i+1)+(Ny-1))),2.0);
   }
 
-  buf_diff = xvec.segment(Nx*(Ny-1),Nx-1)-xvec.segment(Nx*(Ny-1)+1,Nx-1);
+  buf_diff = xvec.segment(Ny*(Nx-1),Ny-1)-xvec.segment(Ny*(Nx-1)+1,Ny-1);
   tsv += buf_diff.squaredNorm();
 
   return(tsv);
@@ -107,7 +115,7 @@ double TSV(int Nx, int Ny, VectorXd &xvec, VectorXd &buf_diff)
 
 void d_TSV(VectorXd &dvec, int Nx, int Ny, VectorXd &xvec)
 {
-  int j;
+  int i;
 
   dvec = VectorXd::Zero(Nx*Ny);
 
@@ -115,37 +123,37 @@ void d_TSV(VectorXd &dvec, int Nx, int Ny, VectorXd &xvec)
   #pragma omp parallel
   {
   #pragma omp for
-  for(j = 0; j < Ny; j++){
-    dvec.segment(Nx*j,(Nx-1))
-      += 2*(xvec.segment(Nx*j,(Nx-1))-xvec.segment(Nx*j+1,(Nx-1)));
-    dvec.segment(Nx*j+1,(Nx-1))
-      += 2*(xvec.segment(Nx*j+1,(Nx-1))-xvec.segment(Nx*j,(Nx-1)));
+  for(i = 0; i < Nx; i++){
+    dvec.segment(Ny*i,(Ny-1))
+      += 2*(xvec.segment(Ny*i,(Ny-1))-xvec.segment(Ny*i+1,(Ny-1)));
+    dvec.segment(Ny*i+1,(Ny-1))
+      += 2*(xvec.segment(Ny*i+1,(Ny-1))-xvec.segment(Ny*i,(Ny-1)));
   }
 
   #pragma omp for
-  for(j = 0; j < Ny-1; j++){
-    dvec.segment(Nx*j,Nx)
-      += 2*(xvec.segment(Nx*j,Nx)-xvec.segment(Nx*(j+1),Nx));
+  for(i = 0; i < Nx-1; i++){
+    dvec.segment(Ny*i,Ny)
+      += 2*(xvec.segment(Ny*i,Ny)-xvec.segment(Ny*(i+1),Ny));
   }
   #pragma omp for
-  for(j = 0; j < Ny-1; j++){
-    dvec.segment(Nx*(j+1),Nx)
-      += 2*(xvec.segment(Nx*(j+1),Nx)-xvec.segment(Nx*j,Nx));
+  for(i = 0; i < Nx-1; i++){
+    dvec.segment(Ny*(i+1),Ny)
+      += 2*(xvec.segment(Ny*(i+1),Ny)-xvec.segment(Ny*i,Ny));
   }
   }
   #else
-  for(j = 0; j < Ny; j++){
-    dvec.segment(Nx*j,(Nx-1))
-      += 2*(xvec.segment(Nx*j,(Nx-1))-xvec.segment(Nx*j+1,(Nx-1)));
-    dvec.segment(Nx*j+1,(Nx-1))
-      += 2*(xvec.segment(Nx*j+1,(Nx-1))-xvec.segment(Nx*j,(Nx-1)));
+  for(i = 0; i < Nx; i++){
+    dvec.segment(Ny*i,(Ny-1))
+      += 2*(xvec.segment(Ny*i,(Ny-1))-xvec.segment(Ny*i+1,(Ny-1)));
+    dvec.segment(Ny*i+1,(Ny-1))
+      += 2*(xvec.segment(Ny*i+1,(Ny-1))-xvec.segment(Ny*i,(Ny-1)));
   }
 
-  for(j = 0; j < Ny-1; j++){
-    dvec.segment(Nx*j,Nx)
-      += 2*(xvec.segment(Nx*j,Nx)-xvec.segment(Nx*(j+1),Nx));
-    dvec.segment(Nx*(j+1),Nx)
-      += 2*(xvec.segment(Nx*(j+1),Nx)-xvec.segment(Nx*j,Nx));
+  for(i = 0; i < Nx-1; i++){
+    dvec.segment(Ny*i,Ny)
+      += 2*(xvec.segment(Ny*i,Ny)-xvec.segment(Ny*(i+1),Ny));
+    dvec.segment(Ny*(i+1),Ny)
+      += 2*(xvec.segment(Ny*(i+1),Ny)-xvec.segment(Ny*i,Ny));
   }
   #endif
 }
