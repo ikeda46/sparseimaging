@@ -703,7 +703,7 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
   VectorXi mx, my, y_neg;
   VectorXd E1, E4, cost, rvec, xtmp, xnew, zvec, dfdx, dtmp, weight, xvec,
-           box, u, v, buf_diff;
+           box, u, v, buf_diff, y_k, z_old;
   VectorXcd yAx, vis, cvec, buf_ax;
   MatrixXd E2x, E2y;
   MatrixXcd mbuf_l, mbuf_h;
@@ -876,6 +876,11 @@ int mfista_L1_TSV_core_nufft(double *xout,
     l1cost = xnew.lpNorm<1>();
     Fval += lambda_l1*l1cost;
 
+    // y_k is the momentum point (zvec) the gradient step was taken from;
+    // z_old is the previous accepted xvec. Both are needed below for the
+    // gradient restart test, in addition to driving the zvec update itself.
+    y_k = zvec;
+    z_old = xvec;
     zvec = xvec;
 
     if(Fval < cost(iter)){
@@ -902,7 +907,19 @@ int mfista_L1_TSV_core_nufft(double *xout,
 
     if((iter>=MINITER) && ((cost(iter-TD)-cost(iter))< eps )) break;
 
-    mu = munew;
+    // Gradient restart (O'Donoghue & Candes 2015): function restart
+    // (F(x_k) > F(x_{k-1})) never fires under this algorithm's monotone
+    // accept/reject rule above, so it would be vacuous here. Instead,
+    // when the momentum point y_k and the step actually taken
+    // (xnew - z_old) point in conflicting directions, the accumulated
+    // momentum is doing more harm than good: forget it by resetting mu
+    // to 1 instead of carrying it forward as mu = munew.
+    if((y_k - xnew).dot(xnew - z_old) > 0.0){
+      mu = 1;
+    }
+    else{
+      mu = munew;
+    }
   }
   if(iter == maxiter){
     cout << std::setw(5) << iter << " cost = " << fixed << setprecision(5)
