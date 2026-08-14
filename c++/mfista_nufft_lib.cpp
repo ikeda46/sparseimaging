@@ -86,7 +86,7 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 	      VectorXd &E1, MatrixXd &E2x, MatrixXd &E2y,
 	      VectorXd &E4, VectorXi &mx, VectorXi &my, VectorXi &y_neg)
 {
-  double tau, coeff, Mrx, Mry, tmp3x, tmp3y, pi, tmpcoef[MSP2];
+  double taux, tauy, coeff, Mrx, Mry, tmp3x, tmp3y, pi, tmpcoef[MSP2];
   int fov_flag = 0;
   VectorXi idx, idx_c;
 
@@ -97,12 +97,19 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   Mrx = (double) 2*Nx;
   Mry = (double) 2*Ny;
 
-  tau = ((double)MSP)/((double)(Nx*Nx));
+  // separate kernel-width parameters per axis: for a square image
+  // (Nx==Ny) taux==tauy and this is unchanged from before, but for a
+  // non-square image the Gaussian spreading kernel must be scaled to
+  // each axis's own grid spacing, not just Nx's.
+  taux = ((double)MSP)/((double)(Nx*Nx));
+  tauy = ((double)MSP)/((double)(Ny*Ny));
 
-  coeff = ((double)(Nx*Ny))*pi/((double)MSP);  
+  // coeff = pi/sqrt(taux*tauy) = (Nx*Ny)*pi/MSP -- already independent
+  // of whether taux==tauy, so this does not need to change.
+  coeff = ((double)(Nx*Ny))*pi/((double)MSP);
 
-  tmp3x = (pi*pi)/(Mrx*Mrx*tau);
-  tmp3y = (pi*pi)/(Mry*Mry*tau);
+  tmp3x = (pi*pi)/(Mrx*Mrx*taux);
+  tmp3y = (pi*pi)/(Mry*Mry*tauy);
 
   for(int j = 0; j < MSP2; ++j) tmpcoef[j] = (double)(j-MSP+1);
 
@@ -137,15 +144,15 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
 
     /* E1 */
 
-    double tmp2x = -((uk-xix)*(uk-xix))/(4.0*tau);
-    double tmp2y = -((vk-xiy)*(vk-xiy))/(4.0*tau);
+    double tmp2x = -((uk-xix)*(uk-xix))/(4.0*taux);
+    double tmp2y = -((vk-xiy)*(vk-xiy))/(4.0*tauy);
 
     E1(k) = exp( tmp2x + tmp2y );
 
     /* E2 */
 
-    double tmp4x = pi*(uk-xix)/(Mrx*tau);
-    double tmp4y = pi*(vk-xiy)/(Mry*tau);
+    double tmp4x = pi*(uk-xix)/(Mrx*taux);
+    double tmp4y = pi*(vk-xiy)/(Mry*tauy);
 
     for(int j = 0; j < MSP2; ++j){
       E2x(j, k) = exp(tmpcoef[j]*(tmp4x-tmpcoef[j]*tmp3x));
@@ -162,11 +169,11 @@ void preNUFFT(int M, int Nx, int Ny, VectorXd &u, VectorXd &v,
   for(int i = 0; i < Nx; ++i){
 
     double tmpi = (double)(i-Nx/2);
-    double tmpx = tau*tmpi*tmpi;
+    double tmpx = taux*tmpi*tmpi;
 
     for(int j = 0; j< Ny; ++j){
       double tmpj = (double)(j-Ny/2);
-      double tmpy = tau*tmpj*tmpj;
+      double tmpy = tauy*tmpj*tmpj;
       E4(i*Ny + j) = coeff*exp(tmpx + tmpy);
     }
   }
