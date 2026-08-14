@@ -54,7 +54,7 @@ void soft_threshold_box(VectorXd &nvec, VectorXd &vec, double eta,
 			int box_flag, VectorXd &box)
 {
   soft_threshold(nvec, vec, eta);
-  if(box_flag == 1) nvec = vec.array()*box.array();
+  if(box_flag == 1) nvec = nvec.array()*box.array();
 }
 
 void soft_threshold_nonneg(VectorXd &nvec, VectorXd &vec, double eta)
